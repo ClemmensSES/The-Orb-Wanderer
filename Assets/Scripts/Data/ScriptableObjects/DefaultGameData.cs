@@ -307,6 +307,8 @@ namespace OrbWanderer.Data.Defaults
                 }
             }
         }
+
+        #endregion
     }
-    #endif
+#endif
 }
