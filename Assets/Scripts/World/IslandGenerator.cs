@@ -193,7 +193,8 @@ namespace OrbWanderer.World
             var circle = colliderObj.AddComponent<CircleCollider2D>();
             circle.radius = islandRadius * 0.9f;
             circle.isTrigger = true;
-            colliderObj.tag = "Region";
+            try { colliderObj.tag = "Region"; }
+            catch (UnityException) { /* Tag not registered yet - run OrbWanderer > Setup Game Scene */ }
             colliderObj.layer = LayerMask.NameToLayer("Default");
         }
 

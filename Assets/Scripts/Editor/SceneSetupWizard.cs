@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
+using UnityEditorInternal;
 using OrbWanderer.Core;
 using OrbWanderer.Data;
 using OrbWanderer.World;
@@ -17,6 +18,9 @@ public static class SceneSetupWizard
     [MenuItem("OrbWanderer/Setup Game Scene")]
     public static void SetupScene()
     {
+        // Register required tags
+        RegisterTag("Region");
+
         // Create a new scene
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
@@ -639,6 +643,24 @@ public static class SceneSetupWizard
         var prefab = PrefabUtility.SaveAsPrefabAsset(obj, prefabPath + "/OrbSlot.prefab");
         Object.DestroyImmediate(obj);
         return prefab;
+    }
+
+    private static void RegisterTag(string tag)
+    {
+        var tagManager = new SerializedObject(AssetDatabase.LoadMainAssetAtPath("ProjectSettings/TagManager.asset"));
+        var tagsProp = tagManager.FindProperty("tags");
+
+        // Check if tag already exists
+        for (int i = 0; i < tagsProp.arraySize; i++)
+        {
+            if (tagsProp.GetArrayElementAtIndex(i).stringValue == tag)
+                return;
+        }
+
+        tagsProp.InsertArrayElementAtIndex(tagsProp.arraySize);
+        tagsProp.GetArrayElementAtIndex(tagsProp.arraySize - 1).stringValue = tag;
+        tagManager.ApplyModifiedProperties();
+        Debug.Log("Registered tag: " + tag);
     }
 
     private static void EnsureFolder(string path)
