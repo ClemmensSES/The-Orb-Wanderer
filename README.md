@@ -78,7 +78,7 @@ Assets/
 
 ## Getting Started (Unity Setup)
 
-1. Open the project in **Unity 2022.3 LTS** or newer
+1. Open the project in **Unity 6.x** (6.3 recommended) or Unity 2022.3+
 2. Go to **OrbWanderer > Create Default Data** in the Unity menu bar to generate all ScriptableObject assets
 3. Create a new scene and add these GameObjects:
    - `GameManager` with GameManager component
