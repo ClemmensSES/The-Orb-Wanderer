@@ -75,8 +75,7 @@ namespace OrbWanderer.World
 
             // Collection behavior
             var collectible = orbObj.AddComponent<CollectibleOrb>();
-            // Set orb data via serialized field
-            var so = new UnityEngine.Serialization.FormatterConverter();
+            collectible.Initialize(orbData);
 
             // Glow effect (child object)
             CreateGlowEffect(orbObj.transform, orbData.glowColor);
