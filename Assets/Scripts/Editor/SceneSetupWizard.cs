@@ -38,8 +38,8 @@ public static class SceneSetupWizard
         rb.gravityScale = 0f;
         rb.freezeRotation = true;
         var sr = player.AddComponent<SpriteRenderer>();
-        sr.color = new Color(0.3f, 0.9f, 0.5f);
-        sr.sprite = CreatePlaceholderSprite("PlayerSprite", Color.white);
+        sr.sprite = AlienSpriteGenerator.CreateAlienPlayer();
+        sr.sortingOrder = 5;
         var collider = player.AddComponent<BoxCollider2D>();
         collider.size = new Vector2(0.8f, 0.8f);
         var pc = player.AddComponent<PlayerController>();
@@ -92,6 +92,15 @@ public static class SceneSetupWizard
         if (equipment.Length > 0)
         {
             SetSerializedField(em, "allEquipment", equipment);
+        }
+
+        // --- Alien World Generator ---
+        var worldGenObj = new GameObject("AlienWorldGenerator");
+        worldGenObj.transform.SetParent(managers.transform);
+        var worldGen = worldGenObj.AddComponent<AlienWorldGenerator>();
+        if (regions.Length > 0)
+        {
+            worldGen.SetRegions(regions);
         }
 
         // --- Canvas for all UI ---
@@ -328,14 +337,6 @@ public static class SceneSetupWizard
             eventSystem.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
         }
 
-        // --- Ground placeholder ---
-        var ground = new GameObject("Ground");
-        var groundSr = ground.AddComponent<SpriteRenderer>();
-        groundSr.sprite = CreatePlaceholderSprite("GroundSprite", new Color(0.3f, 0.6f, 0.3f));
-        ground.transform.localScale = new Vector3(50, 50, 1);
-        groundSr.color = new Color(0.3f, 0.5f, 0.25f);
-        groundSr.sortingOrder = -10;
-
         // --- Save Scene ---
         string scenesFolder = "Assets/Scenes";
         if (!AssetDatabase.IsValidFolder(scenesFolder))
@@ -344,10 +345,10 @@ public static class SceneSetupWizard
         }
         EditorSceneManager.SaveScene(scene, scenesFolder + "/MainGame.unity");
 
-        Debug.Log("Game scene created! Saved to Assets/Scenes/MainGame.unity");
-        Debug.Log("Regions loaded: " + regions.Length);
-        Debug.Log("Equipment loaded: " + equipment.Length);
-        Debug.Log("Scene is ready to play — hit Play to test!");
+        Debug.Log("Alien world scene created! Saved to Assets/Scenes/MainGame.unity");
+        Debug.Log("Regions: " + regions.Length + " | Equipment: " + equipment.Length);
+        Debug.Log("Islands, ocean, creatures, and orbs will generate at runtime.");
+        Debug.Log("Hit Play to explore the alien archipelago!");
     }
 
     // --- Helper methods ---
