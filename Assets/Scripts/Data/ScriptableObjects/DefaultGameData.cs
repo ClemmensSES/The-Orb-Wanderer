@@ -216,7 +216,7 @@ namespace OrbWanderer.Data.Defaults
                 WildlifeSize.Tiny, 1f, 0f, 0, "Insulated cloak for surviving the frozen tundra.");
         }
 
-        #region Helper Methods
+        // --- Helper Methods ---
 
         private static void CreateOrb(string path, string name, OrbType type, OrbRarity rarity,
             RegionType[] regions, float dropRate, Color color, string desc)
@@ -308,7 +308,6 @@ namespace OrbWanderer.Data.Defaults
             }
         }
 
-        #endregion
     }
 #endif
 }
