@@ -1,4 +1,5 @@
 using UnityEngine;
+using OrbWanderer.Wildlife;
 
 namespace OrbWanderer.World
 {
@@ -422,14 +423,5 @@ namespace OrbWanderer.World
         public static Sprite CreateSpiderSprite(int level) => null;
         public static Sprite CreateFirebirdSprite(int level) => null;
         public static Sprite CreateIceGolemSprite(int level) => null;
-    }
-
-    public enum CreatureType
-    {
-        Jellyfish,
-        Whale,
-        Spider,
-        Firebird,
-        IceGolem
     }
 }

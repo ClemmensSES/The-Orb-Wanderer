@@ -112,7 +112,7 @@ namespace OrbWanderer.World
 
             // Find orbs matching this region's native type
             var regionOrbs = System.Array.FindAll(allOrbs, o =>
-                o.nativeRegion == region.regionType || o.orbType == OrbType.Prismatic);
+                System.Array.Exists(o.foundInRegions, r => r == region.regionType) || o.orbType == OrbType.Prismatic);
 
             if (regionOrbs.Length == 0)
                 return new OrbData[] { allOrbs[0] };
