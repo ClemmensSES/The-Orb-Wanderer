@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using OrbWanderer.Core;
+using OrbWanderer.Data;
 using OrbWanderer.World;
 using OrbWanderer.Inventory;
 using OrbWanderer.Wildlife;
