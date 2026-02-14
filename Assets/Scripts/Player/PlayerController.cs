@@ -5,10 +5,12 @@ using OrbWanderer.Equipment;
 namespace OrbWanderer.Player
 {
     /// <summary>
-    /// Handles player movement, interaction input, and mount control.
-    /// Designed for mobile with virtual joystick support and tap interactions.
+    /// 3D third-person player controller.
+    /// Moves on XZ plane, rotates to face movement direction.
+    /// Supports mobile virtual joystick and keyboard (WASD/arrows).
     /// </summary>
-    [RequireComponent(typeof(Rigidbody2D))]
+    [RequireComponent(typeof(Rigidbody))]
+    [RequireComponent(typeof(CapsuleCollider))]
     public class PlayerController : MonoBehaviour
     {
         public static PlayerController Instance { get; private set; }
@@ -16,21 +18,20 @@ namespace OrbWanderer.Player
         [Header("Movement")]
         [SerializeField] private float baseMoveSpeed = 5f;
         [SerializeField] private float sprintMultiplier = 1.5f;
+        [SerializeField] private float rotationSpeed = 10f;
 
         [Header("Interaction")]
         [SerializeField] private float interactionRange = 2f;
         [SerializeField] private LayerMask interactableLayer;
 
         [Header("References")]
-        [SerializeField] private SpriteRenderer spriteRenderer;
         [SerializeField] private Animator animator;
 
-        private Rigidbody2D rb;
+        private Rigidbody rb;
         private Vector2 moveInput;
         private bool isSprinting;
         private bool inputEnabled = true;
 
-        // Animation hash IDs
         private static readonly int AnimSpeed = Animator.StringToHash("Speed");
         private static readonly int AnimIsMoving = Animator.StringToHash("IsMoving");
         private static readonly int AnimIsMounted = Animator.StringToHash("IsMounted");
@@ -47,15 +48,14 @@ namespace OrbWanderer.Player
             }
             Instance = this;
 
-            rb = GetComponent<Rigidbody2D>();
-            rb.gravityScale = 0;
-            rb.freezeRotation = true;
+            rb = GetComponent<Rigidbody>();
+            rb.useGravity = true;
+            rb.constraints = RigidbodyConstraints.FreezeRotation;
         }
 
         private void Update()
         {
             if (!inputEnabled) return;
-
             HandleInput();
             UpdateAnimations();
         }
@@ -63,35 +63,24 @@ namespace OrbWanderer.Player
         private void FixedUpdate()
         {
             if (!inputEnabled) return;
-
             ApplyMovement();
         }
 
         private void HandleInput()
         {
-            // Keyboard input (for editor testing)
             float h = Input.GetAxisRaw("Horizontal");
             float v = Input.GetAxisRaw("Vertical");
             moveInput = new Vector2(h, v).normalized;
 
             isSprinting = Input.GetKey(KeyCode.LeftShift);
 
-            // Tap/click interaction
             if (Input.GetMouseButtonDown(0))
-            {
                 TryInteract();
-            }
 
-            // Mount/Dismount
             if (Input.GetKeyDown(KeyCode.E))
-            {
                 ToggleMount();
-            }
         }
 
-        /// <summary>
-        /// Called by the mobile virtual joystick UI.
-        /// </summary>
         public void SetMoveInput(Vector2 input)
         {
             if (!inputEnabled) return;
@@ -108,24 +97,27 @@ namespace OrbWanderer.Player
             float speed = CalculateSpeed();
             CurrentSpeed = speed;
 
-            Vector2 velocity = moveInput * speed;
+            // Map 2D input to 3D XZ plane
+            Vector3 moveDir = new Vector3(moveInput.x, 0f, moveInput.y);
+
+            // Preserve Y velocity for gravity
+            Vector3 velocity = moveDir * speed;
+            velocity.y = rb.linearVelocity.y;
             rb.linearVelocity = velocity;
 
-            // Flip sprite based on direction
-            if (moveInput.x != 0 && spriteRenderer != null)
+            // Rotate to face movement direction
+            if (moveDir.magnitude > 0.1f)
             {
-                spriteRenderer.flipX = moveInput.x < 0;
+                Quaternion targetRot = Quaternion.LookRotation(moveDir, Vector3.up);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, rotationSpeed * Time.fixedDeltaTime);
             }
         }
 
         private float CalculateSpeed()
         {
             float speed = baseMoveSpeed;
-
-            // Apply sprint
             if (isSprinting) speed *= sprintMultiplier;
 
-            // Apply mount bonus
             var companion = CompanionManager.Instance;
             if (companion != null && companion.IsMounted)
             {
@@ -133,12 +125,9 @@ namespace OrbWanderer.Player
                 speed = mountProps.speedMultiplier;
             }
 
-            // Apply equipment bonus
             var equip = EquipmentManager.Instance;
             if (equip != null)
-            {
                 speed *= equip.GetSpeedMultiplier();
-            }
 
             return speed;
         }
@@ -146,30 +135,25 @@ namespace OrbWanderer.Player
         private void UpdateAnimations()
         {
             if (animator == null) return;
-
             animator.SetFloat(AnimSpeed, CurrentSpeed);
             animator.SetBool(AnimIsMoving, IsMoving);
-
             var companion = CompanionManager.Instance;
             animator.SetBool(AnimIsMounted, companion != null && companion.IsMounted);
         }
 
         private void TryInteract()
         {
-            Vector2 worldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-            Collider2D hit = Physics2D.OverlapCircle(worldPos, 0.5f, interactableLayer);
-
-            if (hit == null) return;
-
-            float dist = Vector2.Distance(transform.position, hit.transform.position);
-            if (dist > interactionRange) return;
-
-            // Try wildlife interaction
-            var wildlife = hit.GetComponent<WildlifeController>();
-            if (wildlife != null)
+            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+            if (Physics.Raycast(ray, out RaycastHit hit, 50f, interactableLayer))
             {
-                HandleWildlifeInteraction(wildlife);
-                return;
+                float dist = Vector3.Distance(transform.position, hit.transform.position);
+                if (dist > interactionRange) return;
+
+                var wildlife = hit.collider.GetComponent<WildlifeController>();
+                if (wildlife != null)
+                {
+                    HandleWildlifeInteraction(wildlife);
+                }
             }
         }
 
@@ -177,12 +161,10 @@ namespace OrbWanderer.Player
         {
             if (wildlife.IsBefriended)
             {
-                // Already befriended - show companion info or set as active
                 CompanionManager.Instance?.SetActiveCompanion(wildlife.WildlifeData);
             }
             else
             {
-                // Try to befriend
                 var satchel = Inventory.SatchelManager.Instance;
                 if (satchel != null)
                 {
@@ -200,13 +182,8 @@ namespace OrbWanderer.Player
                     CompanionManager.Instance?.AddCompanion(wildlife.WildlifeData, wildlife);
                     break;
                 case BefriendResult.FriendshipIncreased:
-                    // Show friendship progress UI
-                    break;
                 case BefriendResult.InsufficientOrbs:
-                    // Show "need more orbs" feedback
-                    break;
                 case BefriendResult.TooFar:
-                    // Show "get closer" feedback
                     break;
             }
         }
@@ -217,46 +194,16 @@ namespace OrbWanderer.Player
             if (companion == null) return;
 
             if (companion.IsMounted)
-            {
                 companion.Dismount();
-            }
             else
-            {
-                var result = companion.TryMount();
-                HandleMountResult(result);
-            }
+                companion.TryMount();
         }
 
-        private void HandleMountResult(MountResult result)
-        {
-            switch (result)
-            {
-                case MountResult.Success:
-                    // Play mount animation, update visuals
-                    break;
-                case MountResult.NeedBetterSaddle:
-                    // Show "need better saddle" message
-                    break;
-                case MountResult.MissingEquipment:
-                    // Show "missing equipment" message
-                    break;
-                case MountResult.NotRideable:
-                    // Show "can't ride this companion" message
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Check if player can traverse the current terrain.
-        /// Used for water, steep cliffs, etc.
-        /// </summary>
         public bool CanTraverse(TerrainType terrain)
         {
             var companion = CompanionManager.Instance;
             if (companion == null || !companion.IsMounted)
-            {
                 return terrain == TerrainType.Normal;
-            }
 
             var mountProps = companion.GetMountProperties();
             return terrain switch
@@ -272,7 +219,7 @@ namespace OrbWanderer.Player
         public void EnableInput(bool enabled)
         {
             inputEnabled = enabled;
-            if (!enabled) rb.linearVelocity = Vector2.zero;
+            if (!enabled) rb.linearVelocity = Vector3.zero;
         }
     }
 

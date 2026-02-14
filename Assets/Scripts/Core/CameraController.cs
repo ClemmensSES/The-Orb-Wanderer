@@ -3,37 +3,48 @@ using UnityEngine;
 namespace OrbWanderer.Core
 {
     /// <summary>
-    /// Smooth camera follow for the player. Handles zoom and region bounds clamping.
+    /// Third-person camera that follows the player from behind.
+    /// Supports zoom in/out via scroll wheel and pinch gesture.
+    /// Player is seen from behind as they walk around.
     /// </summary>
     public class CameraController : MonoBehaviour
     {
         [Header("Follow Settings")]
         [SerializeField] private Transform target;
-        [SerializeField] private float smoothSpeed = 5f;
-        [SerializeField] private Vector3 offset = new Vector3(0, 0, -10);
+        [SerializeField] private float smoothSpeed = 8f;
+
+        [Header("Third-Person Offset")]
+        [SerializeField] private float defaultDistance = 10f;
+        [SerializeField] private float heightOffset = 6f;
+        [SerializeField] private float lookAheadDistance = 2f;
+        [SerializeField] private float cameraAngle = 35f;
 
         [Header("Zoom")]
-        [SerializeField] private float defaultZoom = 5f;
-        [SerializeField] private float minZoom = 3f;
-        [SerializeField] private float maxZoom = 10f;
-        [SerializeField] private float zoomSpeed = 2f;
+        [SerializeField] private float minDistance = 4f;
+        [SerializeField] private float maxDistance = 25f;
+        [SerializeField] private float zoomSpeed = 4f;
 
         [Header("Bounds")]
         [SerializeField] private bool useBounds;
-        [SerializeField] private Vector2 boundsMin;
-        [SerializeField] private Vector2 boundsMax;
+        [SerializeField] private Vector3 boundsMin;
+        [SerializeField] private Vector3 boundsMax;
 
         private Camera cam;
-        private float targetZoom;
+        private float currentDistance;
+        private float targetDistance;
 
         private void Awake()
         {
             cam = GetComponent<Camera>();
             if (cam != null)
             {
-                cam.orthographicSize = defaultZoom;
-                targetZoom = defaultZoom;
+                cam.orthographic = false;
+                cam.fieldOfView = 50f;
+                cam.nearClipPlane = 0.3f;
+                cam.farClipPlane = 500f;
             }
+            currentDistance = defaultDistance;
+            targetDistance = defaultDistance;
         }
 
         private void Start()
@@ -49,27 +60,43 @@ namespace OrbWanderer.Core
         {
             if (target == null) return;
 
-            FollowTarget();
             HandleZoom();
+            FollowTarget();
         }
 
         private void FollowTarget()
         {
-            Vector3 desiredPos = target.position + offset;
+            // Smooth zoom
+            currentDistance = Mathf.Lerp(currentDistance, targetDistance, smoothSpeed * Time.deltaTime);
+
+            // Calculate camera position behind and above player
+            float angleRad = cameraAngle * Mathf.Deg2Rad;
+            float horizontalDist = currentDistance * Mathf.Cos(angleRad);
+            float verticalDist = currentDistance * Mathf.Sin(angleRad) + heightOffset;
+
+            // Position behind the player's forward direction
+            Vector3 playerForward = target.forward;
+            Vector3 desiredPos = target.position
+                - playerForward * horizontalDist
+                + Vector3.up * verticalDist;
 
             if (useBounds)
             {
                 desiredPos.x = Mathf.Clamp(desiredPos.x, boundsMin.x, boundsMax.x);
                 desiredPos.y = Mathf.Clamp(desiredPos.y, boundsMin.y, boundsMax.y);
+                desiredPos.z = Mathf.Clamp(desiredPos.z, boundsMin.z, boundsMax.z);
             }
 
             transform.position = Vector3.Lerp(transform.position, desiredPos, smoothSpeed * Time.deltaTime);
+
+            // Look at player with slight look-ahead
+            Vector3 lookTarget = target.position + Vector3.up * 1.5f + playerForward * lookAheadDistance;
+            Quaternion targetRot = Quaternion.LookRotation(lookTarget - transform.position);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, smoothSpeed * Time.deltaTime);
         }
 
         private void HandleZoom()
         {
-            if (cam == null) return;
-
             // Pinch zoom on mobile
             if (Input.touchCount == 2)
             {
@@ -80,18 +107,17 @@ namespace OrbWanderer.Core
                 float currDist = (t0.position - t1.position).magnitude;
 
                 float diff = prevDist - currDist;
-                targetZoom += diff * zoomSpeed * 0.01f;
+                targetDistance += diff * zoomSpeed * 0.01f;
             }
 
-            // Scroll wheel in editor
+            // Scroll wheel on desktop
             float scroll = Input.GetAxis("Mouse ScrollWheel");
             if (scroll != 0)
             {
-                targetZoom -= scroll * zoomSpeed;
+                targetDistance -= scroll * zoomSpeed * 3f;
             }
 
-            targetZoom = Mathf.Clamp(targetZoom, minZoom, maxZoom);
-            cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, targetZoom, smoothSpeed * Time.deltaTime);
+            targetDistance = Mathf.Clamp(targetDistance, minDistance, maxDistance);
         }
 
         public void SetTarget(Transform newTarget)
@@ -99,7 +125,7 @@ namespace OrbWanderer.Core
             target = newTarget;
         }
 
-        public void SetBounds(Vector2 min, Vector2 max)
+        public void SetBounds(Vector3 min, Vector3 max)
         {
             useBounds = true;
             boundsMin = min;
@@ -111,9 +137,9 @@ namespace OrbWanderer.Core
             useBounds = false;
         }
 
-        public void SetZoom(float zoom)
+        public void SetZoom(float distance)
         {
-            targetZoom = Mathf.Clamp(zoom, minZoom, maxZoom);
+            targetDistance = Mathf.Clamp(distance, minDistance, maxDistance);
         }
     }
 }

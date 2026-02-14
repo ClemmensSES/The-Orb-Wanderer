@@ -5,7 +5,7 @@ using OrbWanderer.Data;
 namespace OrbWanderer.Wildlife
 {
     /// <summary>
-    /// Controls individual wildlife behavior in the world.
+    /// Controls individual wildlife behavior in the 3D world.
     /// Handles AI movement, player interaction, and befriending.
     /// </summary>
     public class WildlifeController : MonoBehaviour
@@ -23,12 +23,11 @@ namespace OrbWanderer.Wildlife
         [SerializeField] private float detectionRange = 8f;
         [SerializeField] private float interactionRange = 2f;
 
-        private Vector2 wanderTarget;
+        private Vector3 wanderTarget;
         private float wanderTimer;
         private Transform playerTransform;
         private bool isInteractable;
 
-        // Events
         public System.Action<WildlifeController> OnBefriended;
         public System.Action<WildlifeController, FriendshipLevel> OnFriendshipChanged;
 
@@ -40,8 +39,6 @@ namespace OrbWanderer.Wildlife
         {
             wildlifeData = data;
             wanderTarget = transform.position;
-
-            // Scale speed based on wildlife size
             moveSpeed *= GetSizeSpeedMultiplier();
         }
 
@@ -65,10 +62,10 @@ namespace OrbWanderer.Wildlife
 
         private void UpdateBehavior()
         {
-            if (isBefriended) return; // Befriended wildlife follows companion logic
+            if (isBefriended) return;
             if (playerTransform == null) return;
 
-            float distToPlayer = Vector2.Distance(transform.position, playerTransform.position);
+            float distToPlayer = Vector3.Distance(transform.position, playerTransform.position);
 
             switch (wildlifeData.behavior)
             {
@@ -117,15 +114,17 @@ namespace OrbWanderer.Wildlife
             {
                 wanderTimer = 0f;
                 Vector2 randomDir = Random.insideUnitCircle * wanderRadius;
-                wanderTarget = (Vector2)transform.position + randomDir;
+                wanderTarget = transform.position + new Vector3(randomDir.x, 0, randomDir.y);
             }
         }
 
         private void FleeFromPlayer()
         {
             if (playerTransform == null) return;
-            Vector2 awayDir = ((Vector2)transform.position - (Vector2)playerTransform.position).normalized;
-            wanderTarget = (Vector2)transform.position + awayDir * detectionRange;
+            Vector3 awayDir = (transform.position - playerTransform.position);
+            awayDir.y = 0;
+            awayDir = awayDir.normalized;
+            wanderTarget = transform.position + awayDir * detectionRange;
         }
 
         private void ChasePlayer()
@@ -139,28 +138,21 @@ namespace OrbWanderer.Wildlife
             float speed = isBefriended ? moveSpeed :
                 (wildlifeData.behavior == WildlifeBehavior.Timid ? fleeSpeed : moveSpeed);
 
-            Vector2 currentPos = transform.position;
-            Vector2 direction = (wanderTarget - currentPos);
+            Vector3 direction = wanderTarget - transform.position;
+            direction.y = 0; // Stay on XZ plane
 
             if (direction.magnitude > 0.1f)
             {
-                Vector2 newPos = Vector2.MoveTowards(currentPos, wanderTarget, speed * Time.deltaTime);
+                Vector3 newPos = Vector3.MoveTowards(transform.position, wanderTarget, speed * Time.deltaTime);
+                newPos.y = transform.position.y; // Preserve Y
                 transform.position = newPos;
 
-                // Flip sprite based on movement direction
-                if (direction.x != 0)
-                {
-                    Vector3 scale = transform.localScale;
-                    scale.x = direction.x > 0 ? Mathf.Abs(scale.x) : -Mathf.Abs(scale.x);
-                    transform.localScale = scale;
-                }
+                // Rotate to face movement direction
+                Quaternion targetRot = Quaternion.LookRotation(direction.normalized, Vector3.up);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 5f * Time.deltaTime);
             }
         }
 
-        /// <summary>
-        /// Attempt to befriend this wildlife using orbs.
-        /// Called from the player interaction system.
-        /// </summary>
         public BefriendResult TryBefriend(Inventory.SatchelManager satchel)
         {
             if (isBefriended)
@@ -171,7 +163,6 @@ namespace OrbWanderer.Wildlife
 
             if (wildlifeData.befriendRecipe == null)
             {
-                // No recipe needed - just interaction count
                 interactionCount++;
                 UpdateFriendship();
                 return friendshipLevel == FriendshipLevel.Bonded ?
@@ -182,7 +173,7 @@ namespace OrbWanderer.Wildlife
                 return BefriendResult.InsufficientOrbs;
 
             satchel.SpendRecipeOrbs(wildlifeData.befriendRecipe);
-            interactionCount += 3; // Recipe-based befriending gives more friendship
+            interactionCount += 3;
             UpdateFriendship();
 
             return friendshipLevel == FriendshipLevel.Bonded ?

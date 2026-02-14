@@ -6,9 +6,8 @@ using OrbWanderer.Wildlife;
 namespace OrbWanderer.World
 {
     /// <summary>
-    /// Generates the entire alien archipelago world at runtime.
-    /// Creates themed islands, ocean, orb spawners, creature spawners,
-    /// and connects everything together.
+    /// Top-level world generator: creates 3D islands, ocean, and places
+    /// the player in the starting grassland region.
     /// </summary>
     public class AlienWorldGenerator : MonoBehaviour
     {
@@ -33,10 +32,7 @@ namespace OrbWanderer.World
         public void GenerateWorld()
         {
             if (allRegions == null || allRegions.Length == 0)
-            {
-                // Try loading from resources
                 allRegions = Resources.LoadAll<RegionData>("GameData/Regions");
-            }
 
             if (allRegions == null || allRegions.Length == 0)
             {
@@ -44,78 +40,84 @@ namespace OrbWanderer.World
                 return;
             }
 
-            // Create ocean
+            CreateSunlight();
             CreateOcean();
-
-            // Load all orbs for spawning
             var allOrbs = Resources.LoadAll<OrbData>("GameData/Orbs");
 
-            // Generate each island
             for (int i = 0; i < allRegions.Length; i++)
             {
                 var region = allRegions[i];
-                Vector2 worldPos = CalculateIslandPosition(region, i);
+                Vector3 worldPos = CalculateIslandPosition(region, i);
                 float radius = baseIslandRadius + Random.Range(-islandRadiusVariation, islandRadiusVariation);
 
                 CreateIsland(region, worldPos, radius, allOrbs);
             }
 
-            // Apply player sprite
-            ApplyPlayerSprite();
-
-            Debug.Log($"Alien world generated! {allRegions.Length} islands created.");
+            ApplyPlayerModel();
+            Debug.Log($"3D alien world generated! {allRegions.Length} islands created.");
         }
 
-        private Vector2 CalculateIslandPosition(RegionData region, int index)
+        private void CreateSunlight()
         {
-            // Use the region's map position scaled by island spacing
-            // This creates a nice archipelago layout
-            return new Vector2(
-                region.mapPosition.x * islandSpacing,
-                region.mapPosition.y * islandSpacing
-            );
+            // Add directional light for the 3D world
+            var lightObj = new GameObject("SunLight");
+            lightObj.transform.SetParent(transform);
+            lightObj.transform.rotation = Quaternion.Euler(45f, -30f, 0f);
+            var light = lightObj.AddComponent<Light>();
+            light.type = LightType.Directional;
+            light.color = new Color(1f, 0.95f, 0.85f);
+            light.intensity = 1.2f;
+            light.shadows = LightShadows.Soft;
+
+            // Ambient light
+            RenderSettings.ambientLight = new Color(0.3f, 0.35f, 0.45f);
+            RenderSettings.fogColor = new Color(0.15f, 0.2f, 0.35f);
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogStartDistance = 50f;
+            RenderSettings.fogEndDistance = 200f;
         }
 
-        private void CreateIsland(RegionData region, Vector2 position, float radius, OrbData[] allOrbs)
+        private Vector3 CalculateIslandPosition(RegionData region, int index)
+        {
+            return new Vector3(
+                region.mapPosition.x * islandSpacing,
+                0f,
+                region.mapPosition.y * islandSpacing);
+        }
+
+        private void CreateIsland(RegionData region, Vector3 position, float radius, OrbData[] allOrbs)
         {
             var islandObj = new GameObject("Island_" + region.regionName);
             islandObj.transform.position = position;
             islandObj.transform.SetParent(transform);
 
-            // Island terrain
             var generator = islandObj.AddComponent<IslandGenerator>();
             generator.Initialize(region, radius);
             generator.GenerateIsland();
 
-            // Orb spawner
             var orbSpawner = islandObj.AddComponent<OrbSpawner>();
             OrbData[] regionOrbs = GetOrbsForRegion(region, allOrbs);
             orbSpawner.Initialize(region.regionType, regionOrbs, radius * 0.7f);
 
-            // Creature spawner
             var creatureSpawner = islandObj.AddComponent<CreatureSpawner>();
             creatureSpawner.Initialize(region.regionType);
 
-            // Region name floating text
             CreateIslandLabel(islandObj.transform, region.regionName, radius);
         }
 
         private OrbData[] GetOrbsForRegion(RegionData region, OrbData[] allOrbs)
         {
-            var regionOrbs = new System.Collections.Generic.List<OrbData>();
-            foreach (var orb in allOrbs)
-            {
-                if (orb.foundInRegions == null) continue;
-                foreach (var orbRegion in orb.foundInRegions)
-                {
-                    if (orbRegion == region.regionType)
-                    {
-                        regionOrbs.Add(orb);
-                        break;
-                    }
-                }
-            }
-            return regionOrbs.ToArray();
+            if (allOrbs == null || allOrbs.Length == 0) return new OrbData[0];
+
+            // Find orbs matching this region's native type
+            var regionOrbs = System.Array.FindAll(allOrbs, o =>
+                o.nativeRegion == region.regionType || o.orbType == OrbType.Prismatic);
+
+            if (regionOrbs.Length == 0)
+                return new OrbData[] { allOrbs[0] };
+
+            return regionOrbs;
         }
 
         private void CreateOcean()
@@ -129,14 +131,12 @@ namespace OrbWanderer.World
 
         private void CreateIslandLabel(Transform island, string name, float radius)
         {
-            var labelObj = new GameObject("Label");
+            // 3D floating text label above the island
+            var labelObj = new GameObject("Label_" + name);
             labelObj.transform.SetParent(island, false);
-            labelObj.transform.localPosition = new Vector3(0, -radius - 1.5f, 0);
+            labelObj.transform.localPosition = new Vector3(0, 4f, 0);
 
-            // Create text sprite (simple pixel text)
-            var sr = labelObj.AddComponent<SpriteRenderer>();
-            sr.sortingOrder = 10;
-
+            // Use a quad with text texture (works on all render pipelines)
             int texWidth = name.Length * 6 + 4;
             int texHeight = 10;
             var tex = new Texture2D(texWidth, texHeight);
@@ -147,12 +147,11 @@ namespace OrbWanderer.World
                 for (int x = 0; x < texWidth; x++)
                     tex.SetPixel(x, y, new Color(0, 0, 0, 0.5f));
 
-            // Simple dot-based text (just marks the area, not actual font rendering)
+            // Simple dot-based text
             Color textColor = Color.white;
             for (int i = 0; i < name.Length; i++)
             {
                 int baseX = 2 + i * 6;
-                // Draw simple character marks
                 for (int py = 2; py < 8; py++)
                     for (int px = 0; px < 4; px++)
                     {
@@ -160,16 +159,34 @@ namespace OrbWanderer.World
                             tex.SetPixel(baseX + px, py, textColor);
                     }
             }
-
             tex.Apply();
-            sr.sprite = Sprite.Create(tex, new Rect(0, 0, texWidth, texHeight),
-                new Vector2(0.5f, 0.5f), texWidth / 3f);
+
+            // Create a quad mesh to display the label texture
+            var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = "LabelQuad";
+            quad.transform.SetParent(labelObj.transform, false);
+            quad.transform.localScale = new Vector3(texWidth / 4f, texHeight / 4f, 1f);
+            Object.Destroy(quad.GetComponent<Collider>());
+
+            var mat = new Material(Shader.Find("Standard"));
+            mat.mainTexture = tex;
+            mat.color = Color.white;
+            mat.SetFloat("_Mode", 3);
+            mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            mat.SetInt("_ZWrite", 0);
+            mat.DisableKeyword("_ALPHATEST_ON");
+            mat.EnableKeyword("_ALPHABLEND_ON");
+            mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            mat.renderQueue = 3000;
+            quad.GetComponent<Renderer>().material = mat;
+
+            // Billboard behavior so the label always faces the camera
+            labelObj.AddComponent<BillboardLabel>();
         }
 
         private bool HasPixel(char c, int x, int y)
         {
-            // Minimal 4x6 pixel font for basic readability
-            // Only handles uppercase and common chars
             c = char.ToUpper(c);
             long glyph = c switch
             {
@@ -187,28 +204,41 @@ namespace OrbWanderer.World
             return ((glyph >> bitIndex) & 1) == 1;
         }
 
-        private void ApplyPlayerSprite()
+        private void ApplyPlayerModel()
         {
             var player = GameObject.FindGameObjectWithTag("Player");
             if (player == null) return;
 
-            var sr = player.GetComponent<SpriteRenderer>();
-            if (sr != null)
-            {
-                sr.sprite = AlienSpriteGenerator.CreateAlienPlayer();
-                sr.sortingOrder = 5;
-            }
+            // Apply 3D model to player
+            AlienSpriteGenerator.ApplyAlienPlayerModel(player);
 
-            // Position player on the starting island (Grassland)
+            // Position player on starting island
             foreach (var region in allRegions)
             {
                 if (region.regionType == RegionType.Grassland)
                 {
                     player.transform.position = new Vector3(
                         region.mapPosition.x * islandSpacing,
-                        region.mapPosition.y * islandSpacing, 0);
+                        1f,
+                        region.mapPosition.y * islandSpacing);
                     break;
                 }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Billboard effect: always faces the camera so labels are readable from any angle.
+    /// </summary>
+    public class BillboardLabel : MonoBehaviour
+    {
+        private void LateUpdate()
+        {
+            if (Camera.main != null)
+            {
+                transform.LookAt(
+                    transform.position + Camera.main.transform.rotation * Vector3.forward,
+                    Camera.main.transform.rotation * Vector3.up);
             }
         }
     }

@@ -9,7 +9,7 @@ using OrbWanderer.World;
 namespace OrbWanderer.Player
 {
     /// <summary>
-    /// Detects nearby orbs and highlights them for the player.
+    /// Detects nearby orbs using 3D OverlapSphere and highlights them.
     /// Detection range increases with better companions and equipment.
     /// </summary>
     public class OrbDetector : MonoBehaviour
@@ -47,7 +47,7 @@ namespace OrbWanderer.Player
         private void ScanForOrbs()
         {
             float range = EffectiveRange;
-            var hits = Physics2D.OverlapCircleAll(transform.position, range, orbLayer);
+            var hits = Physics.OverlapSphere(transform.position, range, orbLayer);
 
             var previousOrbs = new HashSet<CollectibleOrb>(detectedOrbs);
             detectedOrbs.Clear();
@@ -60,28 +60,22 @@ namespace OrbWanderer.Player
                     detectedOrbs.Add(orb);
 
                     if (!previousOrbs.Contains(orb))
-                    {
                         OnOrbDetected?.Invoke(orb);
-                    }
+
                     previousOrbs.Remove(orb);
                 }
             }
 
-            // Remaining in previousOrbs have been lost
             foreach (var lost in previousOrbs)
-            {
                 OnOrbLost?.Invoke(lost);
-            }
 
-            // Sort by distance
             detectedOrbs.Sort((a, b) =>
             {
-                float distA = Vector2.Distance(transform.position, a.transform.position);
-                float distB = Vector2.Distance(transform.position, b.transform.position);
+                float distA = Vector3.Distance(transform.position, a.transform.position);
+                float distB = Vector3.Distance(transform.position, b.transform.position);
                 return distA.CompareTo(distB);
             });
 
-            // Boost detection for specialized orb types from companion
             HighlightSpecializedOrbs();
         }
 
@@ -89,19 +83,13 @@ namespace OrbWanderer.Player
         {
             float range = baseDetectionRange;
 
-            // Companion bonus
             var companion = CompanionManager.Instance;
             if (companion != null)
-            {
                 range *= companion.GetOrbDetectionMultiplier();
-            }
 
-            // Equipment bonus
             var equip = EquipmentManager.Instance;
             if (equip != null)
-            {
                 range += equip.GetDetectionRangeBonus();
-            }
 
             return range;
         }
@@ -119,11 +107,7 @@ namespace OrbWanderer.Player
             foreach (var orb in detectedOrbs)
             {
                 if (specialSet.Contains(orb.OrbData.orbType))
-                {
-                    // Signal that this orb should be highlighted in the UI
-                    // The companion is especially good at finding these
                     OnOrbDetected?.Invoke(orb);
-                }
             }
         }
 

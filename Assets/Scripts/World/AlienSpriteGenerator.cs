@@ -3,403 +3,433 @@ using UnityEngine;
 namespace OrbWanderer.World
 {
     /// <summary>
-    /// Generates pixel art sprites at runtime for the alien player,
+    /// Generates procedural 3D meshes at runtime for the player,
     /// creatures, orbs, and other game entities.
+    /// Replaces the old 2D sprite generator with real 3D geometry.
     /// </summary>
     public static class AlienSpriteGenerator
     {
-        // --- Player Alien ---
-        public static Sprite CreateAlienPlayer()
+        // --- Player ---
+        public static void ApplyAlienPlayerModel(GameObject player)
         {
-            int size = 32;
-            var tex = new Texture2D(size, size);
-            tex.filterMode = FilterMode.Point;
-            ClearTexture(tex);
+            // Body capsule
+            var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            body.name = "Body";
+            body.transform.SetParent(player.transform, false);
+            body.transform.localPosition = new Vector3(0, 0.75f, 0);
+            body.transform.localScale = new Vector3(0.6f, 0.75f, 0.4f);
+            var bodyMat = CreateMaterial(new Color(0.3f, 0.85f, 0.6f));
+            body.GetComponent<Renderer>().material = bodyMat;
+            Object.Destroy(body.GetComponent<Collider>());
 
-            Color body = new Color(0.3f, 0.85f, 0.6f);
-            Color bodyDark = new Color(0.2f, 0.65f, 0.45f);
-            Color eyes = new Color(0.95f, 0.95f, 0.3f);
-            Color eyeGlow = new Color(1f, 1f, 0.5f);
-            Color cloak = new Color(0.2f, 0.15f, 0.4f);
-            Color cloakLight = new Color(0.35f, 0.25f, 0.55f);
+            // Head sphere
+            var head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            head.name = "Head";
+            head.transform.SetParent(player.transform, false);
+            head.transform.localPosition = new Vector3(0, 1.8f, 0);
+            head.transform.localScale = new Vector3(0.55f, 0.65f, 0.5f);
+            head.GetComponent<Renderer>().material = bodyMat;
+            Object.Destroy(head.GetComponent<Collider>());
 
-            // Cloak / body (robe-like shape)
-            for (int y = 2; y < 18; y++)
-            {
-                int halfWidth = y < 8 ? 5 + (8 - y) / 2 : 5;
-                for (int x = 16 - halfWidth; x <= 16 + halfWidth; x++)
-                {
-                    Color c = (x + y) % 3 == 0 ? cloakLight : cloak;
-                    tex.SetPixel(x, y, c);
-                }
-            }
-
-            // Head (oval)
-            for (int y = 18; y < 30; y++)
-            {
-                int headWidth = y < 20 ? (y - 17) * 2 : y > 27 ? (30 - y) * 2 : 6;
-                for (int x = 16 - headWidth; x <= 16 + headWidth; x++)
-                {
-                    if (x < 0 || x >= size) continue;
-                    float dist = Vector2.Distance(new Vector2(x, y), new Vector2(16, 24));
-                    Color c = dist > 4 ? bodyDark : body;
-                    tex.SetPixel(x, y, c);
-                }
-            }
-
-            // Big alien eyes
-            DrawCircle(tex, 13, 24, 2, eyes);
-            DrawCircle(tex, 19, 24, 2, eyes);
-            tex.SetPixel(13, 24, eyeGlow);
-            tex.SetPixel(19, 24, eyeGlow);
+            // Eyes (emissive yellow)
+            var eyeMat = CreateEmissiveMaterial(new Color(0.95f, 0.95f, 0.3f), 2f);
+            CreateEye(player.transform, new Vector3(-0.12f, 1.85f, 0.2f), eyeMat);
+            CreateEye(player.transform, new Vector3(0.12f, 1.85f, 0.2f), eyeMat);
 
             // Antennae
-            tex.SetPixel(12, 29, body);
-            tex.SetPixel(11, 30, body);
-            tex.SetPixel(11, 31, eyeGlow);
-            tex.SetPixel(20, 29, body);
-            tex.SetPixel(21, 30, body);
-            tex.SetPixel(21, 31, eyeGlow);
+            var antennaMat = CreateMaterial(new Color(0.25f, 0.7f, 0.5f));
+            CreateAntenna(player.transform, new Vector3(-0.15f, 2.1f, 0), antennaMat);
+            CreateAntenna(player.transform, new Vector3(0.15f, 2.1f, 0), antennaMat);
 
-            // Small mouth
-            tex.SetPixel(15, 21, bodyDark);
-            tex.SetPixel(16, 21, bodyDark);
-            tex.SetPixel(17, 21, bodyDark);
+            // Cloak (wider capsule at bottom)
+            var cloak = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            cloak.name = "Cloak";
+            cloak.transform.SetParent(player.transform, false);
+            cloak.transform.localPosition = new Vector3(0, 0.3f, 0);
+            cloak.transform.localScale = new Vector3(0.8f, 0.35f, 0.6f);
+            var cloakMat = CreateMaterial(new Color(0.2f, 0.15f, 0.4f));
+            cloak.GetComponent<Renderer>().material = cloakMat;
+            Object.Destroy(cloak.GetComponent<Collider>());
+        }
 
-            tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.1f), 16);
+        private static void CreateEye(Transform parent, Vector3 pos, Material mat)
+        {
+            var eye = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            eye.name = "Eye";
+            eye.transform.SetParent(parent, false);
+            eye.transform.localPosition = pos;
+            eye.transform.localScale = Vector3.one * 0.12f;
+            eye.GetComponent<Renderer>().material = mat;
+            Object.Destroy(eye.GetComponent<Collider>());
+        }
+
+        private static void CreateAntenna(Transform parent, Vector3 basePos, Material mat)
+        {
+            var stalk = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            stalk.name = "Antenna";
+            stalk.transform.SetParent(parent, false);
+            stalk.transform.localPosition = basePos + Vector3.up * 0.15f;
+            stalk.transform.localScale = new Vector3(0.03f, 0.15f, 0.03f);
+            stalk.GetComponent<Renderer>().material = mat;
+            Object.Destroy(stalk.GetComponent<Collider>());
+
+            var tip = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            tip.name = "AntennaTip";
+            tip.transform.SetParent(parent, false);
+            tip.transform.localPosition = basePos + Vector3.up * 0.35f;
+            tip.transform.localScale = Vector3.one * 0.06f;
+            var tipMat = CreateEmissiveMaterial(new Color(1f, 1f, 0.5f), 3f);
+            tip.GetComponent<Renderer>().material = tipMat;
+            Object.Destroy(tip.GetComponent<Collider>());
         }
 
         // --- Creatures ---
 
-        public static Sprite CreateJellyfishSprite(int level)
+        public static void ApplyCreatureModel(GameObject obj, CreatureType type, int level)
         {
-            int size = 24;
-            var tex = new Texture2D(size, size);
-            tex.filterMode = FilterMode.Point;
-            ClearTexture(tex);
-
-            float glow = 0.5f + level * 0.1f;
-            Color bodyColor = new Color(0.4f * glow, 0.6f * glow, 1f * glow, 0.85f);
-            Color innerGlow = new Color(0.6f, 0.8f, 1f, 0.9f);
-
-            // Bell (dome)
-            for (int y = 10; y < 22; y++)
+            switch (type)
             {
-                int w = y < 14 ? (y - 9) * 2 : y > 19 ? (22 - y) * 3 : 8;
-                for (int x = 12 - w; x <= 12 + w; x++)
-                {
-                    if (x < 0 || x >= size) continue;
-                    float dist = Vector2.Distance(new Vector2(x, y), new Vector2(12, 16));
-                    Color c = dist < 3 ? innerGlow : bodyColor;
-                    tex.SetPixel(x, y, c);
-                }
+                case CreatureType.Jellyfish: BuildJellyfish(obj, level); break;
+                case CreatureType.Whale: BuildWhale(obj, level); break;
+                case CreatureType.Spider: BuildSpider(obj, level); break;
+                case CreatureType.Firebird: BuildFirebird(obj, level); break;
+                case CreatureType.IceGolem: BuildIceGolem(obj, level); break;
             }
+        }
+
+        private static void BuildJellyfish(GameObject obj, int level)
+        {
+            float glow = 0.5f + level * 0.1f;
+            var bodyMat = CreateEmissiveMaterial(new Color(0.4f * glow, 0.6f * glow, 1f * glow), 1.5f);
+
+            // Bell dome
+            var bell = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            bell.name = "Bell";
+            bell.transform.SetParent(obj.transform, false);
+            bell.transform.localPosition = new Vector3(0, 0.8f, 0);
+            bell.transform.localScale = new Vector3(1f, 0.6f, 1f);
+            bell.GetComponent<Renderer>().material = bodyMat;
+            Object.Destroy(bell.GetComponent<Collider>());
 
             // Tentacles
-            Color tentacle = bodyColor * 0.7f;
-            tentacle.a = 0.6f;
-            for (int t = 0; t < 5 + level; t++)
+            var tentMat = CreateEmissiveMaterial(new Color(0.3f * glow, 0.5f * glow, 0.9f * glow), 0.8f);
+            int tentCount = 5 + level;
+            for (int i = 0; i < tentCount; i++)
             {
-                int tx = 6 + t * 2;
-                if (tx >= size) break;
-                for (int y = 2; y < 10; y++)
-                {
-                    int wobble = (int)(Mathf.Sin(y * 0.8f + t) * 1.5f);
-                    int px = Mathf.Clamp(tx + wobble, 0, size - 1);
-                    tex.SetPixel(px, y, tentacle);
-                }
+                float angle = (i / (float)tentCount) * Mathf.PI * 2f;
+                float radius = 0.3f;
+                var tent = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+                tent.name = "Tentacle";
+                tent.transform.SetParent(obj.transform, false);
+                tent.transform.localPosition = new Vector3(
+                    Mathf.Cos(angle) * radius, 0.1f, Mathf.Sin(angle) * radius);
+                tent.transform.localScale = new Vector3(0.05f, 0.35f, 0.05f);
+                tent.GetComponent<Renderer>().material = tentMat;
+                Object.Destroy(tent.GetComponent<Collider>());
             }
-
-            // Level indicator dots
-            for (int i = 0; i < Mathf.Min(level, 5); i++)
-            {
-                tex.SetPixel(10 + i * 2, 16, Color.white);
-            }
-
-            tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 12);
         }
 
-        public static Sprite CreateWhaleSprite(int level)
+        private static void BuildWhale(GameObject obj, int level)
         {
-            int size = 32;
-            var tex = new Texture2D(size, size);
-            tex.filterMode = FilterMode.Point;
-            ClearTexture(tex);
+            var bodyMat = CreateMaterial(new Color(0.25f, 0.35f, 0.6f));
+            var bellyMat = CreateMaterial(new Color(0.5f, 0.6f, 0.75f));
 
-            Color body = new Color(0.25f, 0.35f, 0.6f);
-            Color belly = new Color(0.5f, 0.6f, 0.75f);
-            Color eye = Color.white;
+            // Main body
+            var body = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            body.name = "Body";
+            body.transform.SetParent(obj.transform, false);
+            body.transform.localPosition = Vector3.zero;
+            body.transform.localScale = new Vector3(1f, 0.6f, 2f);
+            body.transform.localRotation = Quaternion.Euler(0, 0, 90);
+            body.GetComponent<Renderer>().material = bodyMat;
+            Object.Destroy(body.GetComponent<Collider>());
 
-            // Body (large oval)
-            for (int y = 6; y < 26; y++)
-            {
-                int halfW = (int)(Mathf.Sqrt(1f - Mathf.Pow((y - 16f) / 10f, 2)) * 14);
-                for (int x = 16 - halfW; x <= 16 + halfW; x++)
-                {
-                    if (x < 0 || x >= size) continue;
-                    Color c = y < 14 ? belly : body;
-                    tex.SetPixel(x, y, c);
-                }
-            }
+            // Belly
+            var belly = GameObject.CreatePrimitive(PrimitiveType.Capsule);
+            belly.name = "Belly";
+            belly.transform.SetParent(obj.transform, false);
+            belly.transform.localPosition = new Vector3(0, -0.15f, 0);
+            belly.transform.localScale = new Vector3(0.7f, 0.4f, 1.6f);
+            belly.transform.localRotation = Quaternion.Euler(0, 0, 90);
+            belly.GetComponent<Renderer>().material = bellyMat;
+            Object.Destroy(belly.GetComponent<Collider>());
 
-            // Tail
-            for (int x = 28; x < 32; x++)
-            {
-                int spread = (x - 27) * 2;
-                for (int y = 16 - spread; y <= 16 + spread; y++)
-                {
-                    if (y >= 0 && y < size)
-                        tex.SetPixel(x, y, body);
-                }
-            }
+            // Tail fins
+            var tail = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            tail.name = "Tail";
+            tail.transform.SetParent(obj.transform, false);
+            tail.transform.localPosition = new Vector3(0, 0, -1.3f);
+            tail.transform.localScale = new Vector3(1.2f, 0.08f, 0.4f);
+            tail.GetComponent<Renderer>().material = bodyMat;
+            Object.Destroy(tail.GetComponent<Collider>());
 
             // Eye
-            tex.SetPixel(7, 18, eye);
-            tex.SetPixel(8, 18, eye);
-            tex.SetPixel(7, 19, new Color(0.1f, 0.1f, 0.3f));
-
-            // Fins grow with level
-            if (level >= 2)
-            {
-                for (int i = 0; i < 3 + level; i++)
-                {
-                    int fy = 6 - i;
-                    if (fy >= 0) tex.SetPixel(14 + i, fy, body * 0.8f);
-                    if (fy >= 0) tex.SetPixel(15 + i, fy, body * 0.8f);
-                }
-            }
-
-            tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 12);
+            var eyeMat = CreateMaterial(Color.white);
+            var eye = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            eye.name = "Eye";
+            eye.transform.SetParent(obj.transform, false);
+            eye.transform.localPosition = new Vector3(0.4f, 0.1f, 0.7f);
+            eye.transform.localScale = Vector3.one * 0.12f;
+            eye.GetComponent<Renderer>().material = eyeMat;
+            Object.Destroy(eye.GetComponent<Collider>());
         }
 
-        public static Sprite CreateSpiderSprite(int level)
+        private static void BuildSpider(GameObject obj, int level)
         {
-            int size = 20;
-            var tex = new Texture2D(size, size);
-            tex.filterMode = FilterMode.Point;
-            ClearTexture(tex);
+            var bodyMat = CreateMaterial(new Color(0.5f, 0.2f, 0.6f));
+            var legMat = CreateMaterial(new Color(0.4f, 0.15f, 0.5f));
+            var eyeMat = CreateEmissiveMaterial(new Color(1f, 0.3f, 0.3f), 2f);
 
-            Color body = new Color(0.5f, 0.2f, 0.6f);
-            Color legs = new Color(0.4f, 0.15f, 0.5f);
-            Color eyes = new Color(1f, 0.3f, 0.3f);
-
-            // Body (two circles)
-            DrawCircle(tex, 10, 8, 4, body);   // Abdomen
-            DrawCircle(tex, 10, 13, 3, body * 1.1f); // Head
-
-            // Eyes (multiple, spider-like)
-            tex.SetPixel(8, 14, eyes);
-            tex.SetPixel(12, 14, eyes);
-            if (level >= 2)
-            {
-                tex.SetPixel(9, 15, eyes * 0.7f);
-                tex.SetPixel(11, 15, eyes * 0.7f);
-            }
-
-            // Legs (4 pairs)
-            int legCount = 4 + Mathf.Min(level, 4);
-            for (int i = 0; i < legCount; i++)
-            {
-                int ly = 8 + i - legCount / 2;
-                for (int lx = 0; lx < 4 + level / 2; lx++)
-                {
-                    int leftX = 6 - lx;
-                    int rightX = 14 + lx;
-                    int legY = ly + (lx > 2 ? -1 : 0);
-                    if (leftX >= 0 && legY >= 0 && legY < size) tex.SetPixel(leftX, legY, legs);
-                    if (rightX < size && legY >= 0 && legY < size) tex.SetPixel(rightX, legY, legs);
-                }
-            }
-
-            tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 10);
-        }
-
-        public static Sprite CreateFirebirdSprite(int level)
-        {
-            int size = 24;
-            var tex = new Texture2D(size, size);
-            tex.filterMode = FilterMode.Point;
-            ClearTexture(tex);
-
-            Color body = new Color(0.9f, 0.4f, 0.1f);
-            Color flame = new Color(1f, 0.7f, 0.2f);
-            Color wing = new Color(0.8f, 0.3f, 0.05f);
-
-            // Body
-            DrawCircle(tex, 12, 12, 4, body);
+            // Abdomen
+            var abdomen = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            abdomen.name = "Abdomen";
+            abdomen.transform.SetParent(obj.transform, false);
+            abdomen.transform.localPosition = new Vector3(0, 0.3f, -0.3f);
+            abdomen.transform.localScale = new Vector3(0.6f, 0.5f, 0.7f);
+            abdomen.GetComponent<Renderer>().material = bodyMat;
+            Object.Destroy(abdomen.GetComponent<Collider>());
 
             // Head
-            DrawCircle(tex, 12, 18, 3, body * 1.1f);
-            tex.SetPixel(10, 19, Color.white); // Eye
-            tex.SetPixel(9, 18, flame); // Beak
-
-            // Wings
-            int wingSpan = 4 + level;
-            for (int i = 0; i < wingSpan; i++)
-            {
-                int wy = 12 + i / 2;
-                tex.SetPixel(6 - i, wy, wing);
-                tex.SetPixel(18 + i, wy, wing);
-                if (wy + 1 < size)
-                {
-                    tex.SetPixel(6 - i, wy + 1, wing * 0.8f);
-                    tex.SetPixel(18 + i, wy + 1, wing * 0.8f);
-                }
-            }
-
-            // Tail flame
-            for (int i = 0; i < 3 + level; i++)
-            {
-                int fy = 7 - i;
-                if (fy >= 0)
-                {
-                    tex.SetPixel(11 + (i % 2), fy, flame);
-                    tex.SetPixel(13 - (i % 2), fy, flame * 0.8f);
-                }
-            }
-
-            tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 12);
-        }
-
-        public static Sprite CreateIceGolemSprite(int level)
-        {
-            int size = 28;
-            var tex = new Texture2D(size, size);
-            tex.filterMode = FilterMode.Point;
-            ClearTexture(tex);
-
-            Color ice = new Color(0.6f, 0.8f, 1f);
-            Color iceLight = new Color(0.8f, 0.9f, 1f);
-            Color iceDark = new Color(0.3f, 0.5f, 0.7f);
-            Color eyes = new Color(0.2f, 0.6f, 1f);
-
-            // Body (chunky)
-            for (int y = 2; y < 18; y++)
-            {
-                int halfW = y < 5 ? 3 + y : y > 14 ? 3 + (18 - y) : 8;
-                for (int x = 14 - halfW; x <= 14 + halfW; x++)
-                {
-                    if (x < 0 || x >= size) continue;
-                    Color c = ((x + y) % 4 == 0) ? iceLight : ice;
-                    tex.SetPixel(x, y, c);
-                }
-            }
-
-            // Head
-            for (int y = 18; y < 26; y++)
-            {
-                int halfW = y < 20 ? (y - 17) * 2 : y > 24 ? (26 - y) * 2 : 5;
-                for (int x = 14 - halfW; x <= 14 + halfW; x++)
-                {
-                    if (x < 0 || x >= size) continue;
-                    tex.SetPixel(x, y, iceLight);
-                }
-            }
-
-            // Crystal crown (grows with level)
-            for (int i = 0; i < 3 + level; i++)
-            {
-                int cx = 11 + i * 2;
-                if (cx < size)
-                {
-                    for (int h = 0; h < 2 + level / 2; h++)
-                    {
-                        int cy = 26 + h;
-                        if (cy < size) tex.SetPixel(cx, cy, iceLight);
-                    }
-                }
-            }
+            var head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            head.name = "Head";
+            head.transform.SetParent(obj.transform, false);
+            head.transform.localPosition = new Vector3(0, 0.35f, 0.3f);
+            head.transform.localScale = Vector3.one * 0.4f;
+            head.GetComponent<Renderer>().material = bodyMat;
+            Object.Destroy(head.GetComponent<Collider>());
 
             // Eyes
-            tex.SetPixel(12, 22, eyes);
-            tex.SetPixel(16, 22, eyes);
+            CreateEye(obj.transform, new Vector3(-0.1f, 0.42f, 0.45f), eyeMat);
+            CreateEye(obj.transform, new Vector3(0.1f, 0.42f, 0.45f), eyeMat);
+
+            // Legs
+            int legPairs = 4 + Mathf.Min(level, 2);
+            for (int i = 0; i < legPairs; i++)
+            {
+                float z = -0.3f + i * 0.15f;
+                CreateSpiderLeg(obj.transform, new Vector3(-0.4f, 0.15f, z), true, legMat);
+                CreateSpiderLeg(obj.transform, new Vector3(0.4f, 0.15f, z), false, legMat);
+            }
+        }
+
+        private static void CreateSpiderLeg(Transform parent, Vector3 pos, bool left, Material mat)
+        {
+            var leg = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            leg.name = "Leg";
+            leg.transform.SetParent(parent, false);
+            leg.transform.localPosition = pos;
+            leg.transform.localScale = new Vector3(0.04f, 0.2f, 0.04f);
+            leg.transform.localRotation = Quaternion.Euler(0, 0, left ? 45 : -45);
+            leg.GetComponent<Renderer>().material = mat;
+            Object.Destroy(leg.GetComponent<Collider>());
+        }
+
+        private static void BuildFirebird(GameObject obj, int level)
+        {
+            var bodyMat = CreateEmissiveMaterial(new Color(0.9f, 0.4f, 0.1f), 1f);
+            var wingMat = CreateEmissiveMaterial(new Color(0.8f, 0.3f, 0.05f), 0.8f);
+            var flameMat = CreateEmissiveMaterial(new Color(1f, 0.7f, 0.2f), 3f);
+
+            // Body
+            var body = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            body.name = "Body";
+            body.transform.SetParent(obj.transform, false);
+            body.transform.localPosition = new Vector3(0, 0.4f, 0);
+            body.transform.localScale = new Vector3(0.5f, 0.4f, 0.6f);
+            body.GetComponent<Renderer>().material = bodyMat;
+            Object.Destroy(body.GetComponent<Collider>());
+
+            // Head
+            var head = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            head.name = "Head";
+            head.transform.SetParent(obj.transform, false);
+            head.transform.localPosition = new Vector3(0, 0.65f, 0.25f);
+            head.transform.localScale = Vector3.one * 0.3f;
+            head.GetComponent<Renderer>().material = bodyMat;
+            Object.Destroy(head.GetComponent<Collider>());
+
+            // Beak
+            var beak = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            beak.name = "Beak";
+            beak.transform.SetParent(obj.transform, false);
+            beak.transform.localPosition = new Vector3(0, 0.6f, 0.45f);
+            beak.transform.localScale = new Vector3(0.06f, 0.04f, 0.12f);
+            beak.GetComponent<Renderer>().material = flameMat;
+            Object.Destroy(beak.GetComponent<Collider>());
+
+            // Wings
+            float wingSpan = 0.5f + level * 0.1f;
+            CreateWing(obj.transform, new Vector3(-wingSpan, 0.5f, 0), wingMat, true);
+            CreateWing(obj.transform, new Vector3(wingSpan, 0.5f, 0), wingMat, false);
+
+            // Tail flame
+            for (int i = 0; i < 2 + level; i++)
+            {
+                var flame = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                flame.name = "TailFlame";
+                flame.transform.SetParent(obj.transform, false);
+                flame.transform.localPosition = new Vector3(
+                    Random.Range(-0.08f, 0.08f), 0.35f - i * 0.1f, -0.35f - i * 0.1f);
+                flame.transform.localScale = Vector3.one * (0.12f - i * 0.02f);
+                flame.GetComponent<Renderer>().material = flameMat;
+                Object.Destroy(flame.GetComponent<Collider>());
+            }
+        }
+
+        private static void CreateWing(Transform parent, Vector3 pos, Material mat, bool left)
+        {
+            var wing = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            wing.name = "Wing";
+            wing.transform.SetParent(parent, false);
+            wing.transform.localPosition = pos;
+            wing.transform.localScale = new Vector3(0.5f, 0.04f, 0.3f);
+            wing.transform.localRotation = Quaternion.Euler(0, 0, left ? 15 : -15);
+            wing.GetComponent<Renderer>().material = mat;
+            Object.Destroy(wing.GetComponent<Collider>());
+        }
+
+        private static void BuildIceGolem(GameObject obj, int level)
+        {
+            var iceMat = CreateEmissiveMaterial(new Color(0.6f, 0.8f, 1f), 0.5f);
+            var iceLightMat = CreateEmissiveMaterial(new Color(0.8f, 0.9f, 1f), 1f);
+            var eyeMat = CreateEmissiveMaterial(new Color(0.2f, 0.6f, 1f), 3f);
+
+            // Body
+            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            body.name = "Body";
+            body.transform.SetParent(obj.transform, false);
+            body.transform.localPosition = new Vector3(0, 0.6f, 0);
+            body.transform.localScale = new Vector3(0.8f, 1f, 0.6f);
+            body.GetComponent<Renderer>().material = iceMat;
+            Object.Destroy(body.GetComponent<Collider>());
+
+            // Head
+            var head = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            head.name = "Head";
+            head.transform.SetParent(obj.transform, false);
+            head.transform.localPosition = new Vector3(0, 1.4f, 0);
+            head.transform.localScale = new Vector3(0.55f, 0.5f, 0.5f);
+            head.GetComponent<Renderer>().material = iceLightMat;
+            Object.Destroy(head.GetComponent<Collider>());
+
+            // Eyes
+            CreateEye(obj.transform, new Vector3(-0.15f, 1.45f, 0.26f), eyeMat);
+            CreateEye(obj.transform, new Vector3(0.15f, 1.45f, 0.26f), eyeMat);
+
+            // Crystal crown
+            for (int i = 0; i < 3 + level; i++)
+            {
+                var crystal = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                crystal.name = "Crown";
+                crystal.transform.SetParent(obj.transform, false);
+                float xOff = -0.2f + i * 0.15f;
+                crystal.transform.localPosition = new Vector3(xOff, 1.8f + Random.Range(0f, 0.1f), 0);
+                crystal.transform.localScale = new Vector3(0.08f, 0.2f + level * 0.05f, 0.08f);
+                crystal.transform.localRotation = Quaternion.Euler(0, 0, Random.Range(-10f, 10f));
+                crystal.GetComponent<Renderer>().material = iceLightMat;
+                Object.Destroy(crystal.GetComponent<Collider>());
+            }
 
             // Arms
-            for (int i = 0; i < 4 + level / 2; i++)
-            {
-                tex.SetPixel(6 - i, 12, iceDark);
-                tex.SetPixel(22 + i, 12, iceDark);
-                if (i > 0)
-                {
-                    tex.SetPixel(6 - i, 13, iceDark);
-                    tex.SetPixel(22 + i, 13, iceDark);
-                }
-            }
+            float armLen = 0.4f + level * 0.05f;
+            var leftArm = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            leftArm.name = "LeftArm";
+            leftArm.transform.SetParent(obj.transform, false);
+            leftArm.transform.localPosition = new Vector3(-0.6f, 0.8f, 0);
+            leftArm.transform.localScale = new Vector3(armLen, 0.15f, 0.15f);
+            leftArm.GetComponent<Renderer>().material = iceMat;
+            Object.Destroy(leftArm.GetComponent<Collider>());
 
-            tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.1f), 14);
+            var rightArm = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            rightArm.name = "RightArm";
+            rightArm.transform.SetParent(obj.transform, false);
+            rightArm.transform.localPosition = new Vector3(0.6f, 0.8f, 0);
+            rightArm.transform.localScale = new Vector3(armLen, 0.15f, 0.15f);
+            rightArm.GetComponent<Renderer>().material = iceMat;
+            Object.Destroy(rightArm.GetComponent<Collider>());
         }
 
-        // --- Orb Sprites ---
+        // --- Orb (shiny 3D sphere with glow) ---
 
-        public static Sprite CreateOrbSprite(Color glowColor, int size = 16)
+        public static void ApplyOrbModel(GameObject obj, Color glowColor)
         {
-            var tex = new Texture2D(size, size);
-            tex.filterMode = FilterMode.Point;
-            ClearTexture(tex);
+            // Main orb sphere
+            var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.name = "OrbMesh";
+            sphere.transform.SetParent(obj.transform, false);
+            sphere.transform.localPosition = Vector3.zero;
+            sphere.transform.localScale = Vector3.one * 0.5f;
+            var orbMat = CreateShinyOrbMaterial(glowColor);
+            sphere.GetComponent<Renderer>().material = orbMat;
+            Object.Destroy(sphere.GetComponent<Collider>());
 
-            float center = size / 2f;
-            float radius = center - 2;
+            // Inner glow sphere (slightly smaller, strong emission)
+            var innerGlow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            innerGlow.name = "InnerGlow";
+            innerGlow.transform.SetParent(obj.transform, false);
+            innerGlow.transform.localPosition = Vector3.zero;
+            innerGlow.transform.localScale = Vector3.one * 0.35f;
+            var innerMat = CreateEmissiveMaterial(Color.Lerp(glowColor, Color.white, 0.5f), 4f);
+            innerGlow.GetComponent<Renderer>().material = innerMat;
+            Object.Destroy(innerGlow.GetComponent<Collider>());
 
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
-                    if (dist <= radius)
-                    {
-                        float t = dist / radius;
-                        Color c = Color.Lerp(Color.white * 0.9f, glowColor, t);
-                        c.a = 1f;
-
-                        // Highlight
-                        float highlight = Vector2.Distance(new Vector2(x, y),
-                            new Vector2(center - 2, center + 2));
-                        if (highlight < radius * 0.3f)
-                            c = Color.Lerp(c, Color.white, 0.4f);
-
-                        tex.SetPixel(x, y, c);
-                    }
-                    else if (dist <= radius + 1.5f)
-                    {
-                        // Glow halo
-                        Color glow = glowColor;
-                        glow.a = 0.3f * (1f - (dist - radius) / 1.5f);
-                        tex.SetPixel(x, y, glow);
-                    }
-                }
-            }
-
-            tex.Apply();
-            return Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
+            // Point light for real glow effect
+            var lightObj = new GameObject("OrbLight");
+            lightObj.transform.SetParent(obj.transform, false);
+            lightObj.transform.localPosition = Vector3.zero;
+            var light = lightObj.AddComponent<Light>();
+            light.type = LightType.Point;
+            light.color = glowColor;
+            light.intensity = 1.5f;
+            light.range = 3f;
         }
 
-        // --- Utility ---
+        // --- Material Helpers ---
 
-        private static void ClearTexture(Texture2D tex)
+        public static Material CreateMaterial(Color color)
         {
-            var clear = new Color[tex.width * tex.height];
-            for (int i = 0; i < clear.Length; i++)
-                clear[i] = Color.clear;
-            tex.SetPixels(clear);
+            var mat = new Material(Shader.Find("Standard"));
+            mat.color = color;
+            return mat;
         }
 
-        private static void DrawCircle(Texture2D tex, int cx, int cy, int radius, Color color)
+        public static Material CreateEmissiveMaterial(Color color, float intensity)
         {
-            for (int y = cy - radius; y <= cy + radius; y++)
-            {
-                for (int x = cx - radius; x <= cx + radius; x++)
-                {
-                    if (x < 0 || x >= tex.width || y < 0 || y >= tex.height) continue;
-                    if (Vector2.Distance(new Vector2(x, y), new Vector2(cx, cy)) <= radius)
-                        tex.SetPixel(x, y, color);
-                }
-            }
+            var mat = new Material(Shader.Find("Standard"));
+            mat.color = color;
+            mat.EnableKeyword("_EMISSION");
+            mat.SetColor("_EmissionColor", color * intensity);
+            return mat;
         }
+
+        public static Material CreateShinyOrbMaterial(Color color)
+        {
+            var mat = new Material(Shader.Find("Standard"));
+            mat.color = color;
+            mat.SetFloat("_Metallic", 0.8f);
+            mat.SetFloat("_Glossiness", 0.95f);
+            mat.EnableKeyword("_EMISSION");
+            mat.SetColor("_EmissionColor", color * 2f);
+            return mat;
+        }
+
+        // Keep legacy method signatures that return Sprite for any code
+        // that hasn't been updated yet — they now return null.
+        public static Sprite CreateAlienPlayer() => null;
+        public static Sprite CreateOrbSprite(Color glowColor, int size = 16) => null;
+        public static Sprite CreateJellyfishSprite(int level) => null;
+        public static Sprite CreateWhaleSprite(int level) => null;
+        public static Sprite CreateSpiderSprite(int level) => null;
+        public static Sprite CreateFirebirdSprite(int level) => null;
+        public static Sprite CreateIceGolemSprite(int level) => null;
+    }
+
+    public enum CreatureType
+    {
+        Jellyfish,
+        Whale,
+        Spider,
+        Firebird,
+        IceGolem
     }
 }

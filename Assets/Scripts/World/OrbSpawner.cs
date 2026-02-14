@@ -5,9 +5,8 @@ using OrbWanderer.Data;
 namespace OrbWanderer.World
 {
     /// <summary>
-    /// Spawns collectible orbs on an island with visual effects.
+    /// Spawns shiny 3D collectible orbs on an island.
     /// Different orb types spawn based on the island's region type.
-    /// Some orbs are in hard-to-reach spots requiring creature abilities.
     /// </summary>
     public class OrbSpawner : MonoBehaviour
     {
@@ -17,9 +16,9 @@ namespace OrbWanderer.World
         [SerializeField] private float respawnInterval = 15f;
 
         [Header("Special Orbs")]
-        [SerializeField] private float highOrbChance = 0.2f;    // Needs jellyfish
-        [SerializeField] private float hiddenOrbChance = 0.15f;  // Needs spider
-        [SerializeField] private float frozenOrbChance = 0.15f;  // Needs whale/firebird
+        [SerializeField] private float highOrbChance = 0.2f;
+        [SerializeField] private float hiddenOrbChance = 0.15f;
+        [SerializeField] private float frozenOrbChance = 0.15f;
         [SerializeField] private float highOrbHeight = 3f;
 
         private RegionType islandType;
@@ -49,27 +48,24 @@ namespace OrbWanderer.World
         {
             if (availableOrbs == null || availableOrbs.Length == 0) return;
 
-            // Pick an orb type based on rarity weights
             OrbData orbData = PickRandomOrb();
             if (orbData == null) return;
 
-            Vector2 spawnPos = (Vector2)transform.position +
-                Random.insideUnitCircle.normalized * Random.Range(2f, spawnRadius * 0.8f);
+            // Spawn on XZ plane around the island
+            Vector2 circle = Random.insideUnitCircle.normalized * Random.Range(2f, spawnRadius * 0.8f);
+            Vector3 spawnPos = transform.position + new Vector3(circle.x, 0.5f, circle.y);
 
-            // Determine orb placement type
             OrbPlacement placement = DeterminePlacement();
 
             var orbObj = new GameObject("Orb_" + orbData.orbName);
             orbObj.transform.position = spawnPos;
             orbObj.transform.SetParent(transform);
 
-            // Visual orb sprite
-            var sr = orbObj.AddComponent<SpriteRenderer>();
-            sr.sprite = AlienSpriteGenerator.CreateOrbSprite(orbData.glowColor);
-            sr.sortingOrder = 3;
+            // Apply 3D orb model (shiny sphere with glow)
+            AlienSpriteGenerator.ApplyOrbModel(orbObj, orbData.glowColor);
 
-            // Collider for pickup
-            var collider = orbObj.AddComponent<CircleCollider2D>();
+            // 3D sphere collider for pickup
+            var collider = orbObj.AddComponent<SphereCollider>();
             collider.radius = 0.5f;
             collider.isTrigger = true;
 
@@ -77,29 +73,28 @@ namespace OrbWanderer.World
             var collectible = orbObj.AddComponent<CollectibleOrb>();
             collectible.Initialize(orbData);
 
-            // Glow effect (child object)
-            CreateGlowEffect(orbObj.transform, orbData.glowColor);
-
             // Special placement
             switch (placement)
             {
                 case OrbPlacement.High:
                     orbObj.transform.position += Vector3.up * highOrbHeight;
-                    // Add floating particle trail
-                    CreateFloatingIndicator(orbObj.transform, "UP");
-                    sr.color = new Color(1, 1, 1, 0.7f);
+                    CreateFloatingIndicator(orbObj.transform, true);
                     break;
 
                 case OrbPlacement.Hidden:
-                    // Slightly transparent until spider reveals
-                    sr.color = new Color(1, 1, 1, 0.4f);
-                    CreateFloatingIndicator(orbObj.transform, "?");
+                    // Make partially transparent
+                    foreach (var r in orbObj.GetComponentsInChildren<Renderer>())
+                    {
+                        var c = r.material.color;
+                        c.a = 0.4f;
+                        r.material.color = c;
+                    }
+                    CreateFloatingIndicator(orbObj.transform, false);
                     break;
 
                 case OrbPlacement.Frozen:
-                    // Encased in ice
                     CreateIceEncasing(orbObj.transform);
-                    collider.enabled = false; // Can't collect until broken
+                    collider.enabled = false;
                     break;
             }
 
@@ -110,7 +105,6 @@ namespace OrbWanderer.World
 
             activeOrbs++;
 
-            // Track destruction
             var tracker = orbObj.AddComponent<OrbDestroyTracker>();
             tracker.spawner = this;
         }
@@ -141,98 +135,45 @@ namespace OrbWanderer.World
             return availableOrbs[0];
         }
 
-        private void CreateGlowEffect(Transform parent, Color color)
+        private void CreateFloatingIndicator(Transform parent, bool isUp)
         {
-            var glow = new GameObject("Glow");
-            glow.transform.SetParent(parent, false);
-            var sr = glow.AddComponent<SpriteRenderer>();
-
-            int size = 24;
-            var tex = new Texture2D(size, size);
-            tex.filterMode = FilterMode.Bilinear;
-            float center = size / 2f;
-            for (int y = 0; y < size; y++)
-                for (int x = 0; x < size; x++)
-                {
-                    float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
-                    float alpha = Mathf.Max(0, 1f - dist / center) * 0.3f;
-                    tex.SetPixel(x, y, new Color(color.r, color.g, color.b, alpha));
-                }
-            tex.Apply();
-
-            sr.sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size / 2f);
-            sr.sortingOrder = 2;
-            glow.transform.localScale = Vector3.one * 1.5f;
-        }
-
-        private void CreateFloatingIndicator(Transform parent, string text)
-        {
-            // Simple visual indicator using a sprite
             var indicator = new GameObject("Indicator");
             indicator.transform.SetParent(parent, false);
-            indicator.transform.localPosition = new Vector3(0, 1f, 0);
-            var sr = indicator.AddComponent<SpriteRenderer>();
+            indicator.transform.localPosition = new Vector3(0, 1.2f, 0);
 
-            int size = 8;
-            var tex = new Texture2D(size, size);
-            tex.filterMode = FilterMode.Point;
-            for (int y = 0; y < size; y++)
-                for (int x = 0; x < size; x++)
-                    tex.SetPixel(x, y, Color.clear);
-
-            // Arrow up or question mark indicator
-            Color c = Color.yellow;
-            if (text == "UP")
-            {
-                tex.SetPixel(3, 7, c); tex.SetPixel(4, 7, c);
-                tex.SetPixel(2, 6, c); tex.SetPixel(5, 6, c);
-                tex.SetPixel(3, 3, c); tex.SetPixel(4, 3, c);
-                tex.SetPixel(3, 4, c); tex.SetPixel(4, 4, c);
-                tex.SetPixel(3, 5, c); tex.SetPixel(4, 5, c);
-            }
-            else
-            {
-                tex.SetPixel(3, 7, c); tex.SetPixel(4, 7, c);
-                tex.SetPixel(5, 6, c); tex.SetPixel(4, 5, c);
-                tex.SetPixel(3, 4, c); tex.SetPixel(3, 2, c);
-                tex.SetPixel(4, 2, c);
-            }
-
-            tex.Apply();
-            sr.sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
-            sr.sortingOrder = 11;
+            // Small arrow/question mark sphere
+            var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            sphere.name = "IndicatorMesh";
+            sphere.transform.SetParent(indicator.transform, false);
+            sphere.transform.localScale = Vector3.one * 0.15f;
+            var mat = AlienSpriteGenerator.CreateEmissiveMaterial(
+                isUp ? Color.cyan : Color.yellow, 3f);
+            sphere.GetComponent<Renderer>().material = mat;
+            Object.Destroy(sphere.GetComponent<Collider>());
         }
 
         private void CreateIceEncasing(Transform parent)
         {
-            var ice = new GameObject("IceEncasing");
+            var ice = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            ice.name = "IceEncasing";
             ice.transform.SetParent(parent, false);
-            var sr = ice.AddComponent<SpriteRenderer>();
+            ice.transform.localPosition = Vector3.zero;
+            ice.transform.localScale = Vector3.one * 0.8f;
 
-            int size = 20;
-            var tex = new Texture2D(size, size);
-            tex.filterMode = FilterMode.Point;
-            float center = size / 2f;
-            Color iceColor = new Color(0.6f, 0.85f, 1f, 0.6f);
+            var iceMat = new Material(Shader.Find("Standard"));
+            iceMat.color = new Color(0.6f, 0.85f, 1f, 0.5f);
+            iceMat.SetFloat("_Mode", 3);
+            iceMat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            iceMat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            iceMat.SetInt("_ZWrite", 0);
+            iceMat.DisableKeyword("_ALPHATEST_ON");
+            iceMat.EnableKeyword("_ALPHABLEND_ON");
+            iceMat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            iceMat.renderQueue = 3000;
+            iceMat.SetFloat("_Glossiness", 0.95f);
 
-            for (int y = 0; y < size; y++)
-                for (int x = 0; x < size; x++)
-                {
-                    float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
-                    if (dist <= center - 1)
-                    {
-                        float edge = dist / (center - 1);
-                        Color c = iceColor;
-                        c.a = 0.3f + edge * 0.4f;
-                        tex.SetPixel(x, y, c);
-                    }
-                    else
-                        tex.SetPixel(x, y, Color.clear);
-                }
-
-            tex.Apply();
-            sr.sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
-            sr.sortingOrder = 4;
+            ice.GetComponent<Renderer>().material = iceMat;
+            Object.Destroy(ice.GetComponent<Collider>());
         }
 
         public void NotifyOrbDestroyed()
@@ -243,7 +184,7 @@ namespace OrbWanderer.World
         private enum OrbPlacement { Normal, High, Hidden, Frozen }
     }
 
-    /// <summary>Simple bobbing animation for orbs.</summary>
+    /// <summary>Simple 3D bobbing animation for orbs.</summary>
     public class OrbBobAnimation : MonoBehaviour
     {
         public float bobSpeed = 2f;
@@ -262,7 +203,8 @@ namespace OrbWanderer.World
             var pos = startPos;
             pos.y += Mathf.Sin(Time.time * bobSpeed + offset) * bobHeight;
             transform.localPosition = pos;
-            transform.Rotate(0, 0, 20f * Time.deltaTime);
+            // Spin on Y axis
+            transform.Rotate(0, 20f * Time.deltaTime, 0);
         }
     }
 

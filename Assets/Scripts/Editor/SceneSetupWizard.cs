@@ -24,31 +24,33 @@ public static class SceneSetupWizard
         // Create a new scene
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
 
-        // --- Camera ---
+        // --- Camera (3D perspective, third-person) ---
         var mainCam = Camera.main;
         if (mainCam != null)
         {
-            mainCam.orthographic = true;
-            mainCam.orthographicSize = 5f;
-            mainCam.backgroundColor = new Color(0.1f, 0.15f, 0.2f);
+            mainCam.orthographic = false;
+            mainCam.fieldOfView = 50f;
+            mainCam.nearClipPlane = 0.3f;
+            mainCam.farClipPlane = 500f;
+            mainCam.backgroundColor = new Color(0.1f, 0.15f, 0.25f);
+            mainCam.transform.position = new Vector3(0, 10, -10);
+            mainCam.transform.rotation = Quaternion.Euler(35, 0, 0);
             mainCam.gameObject.AddComponent<CameraController>();
         }
 
-        // --- Player ---
+        // --- Player (3D with Rigidbody, CapsuleCollider) ---
         var player = new GameObject("Player");
         player.tag = "Player";
         player.layer = LayerMask.NameToLayer("Default");
-        var rb = player.AddComponent<Rigidbody2D>();
-        rb.gravityScale = 0f;
-        rb.freezeRotation = true;
-        var sr = player.AddComponent<SpriteRenderer>();
-        sr.sprite = AlienSpriteGenerator.CreateAlienPlayer();
-        sr.sortingOrder = 5;
-        var collider = player.AddComponent<BoxCollider2D>();
-        collider.size = new Vector2(0.8f, 0.8f);
-        var pc = player.AddComponent<PlayerController>();
-        SetSerializedField(pc, "spriteRenderer", sr);
-        var detector = player.AddComponent<OrbDetector>();
+        var rb = player.AddComponent<Rigidbody>();
+        rb.useGravity = true;
+        rb.constraints = RigidbodyConstraints.FreezeRotation;
+        var capsule = player.AddComponent<CapsuleCollider>();
+        capsule.radius = 0.3f;
+        capsule.height = 1.8f;
+        capsule.center = new Vector3(0, 0.9f, 0);
+        player.AddComponent<PlayerController>();
+        player.AddComponent<OrbDetector>();
 
         // --- Managers ---
         var managers = new GameObject("--- Managers ---");
@@ -60,12 +62,10 @@ public static class SceneSetupWizard
         var wmObj = new GameObject("WorldMapManager");
         wmObj.transform.SetParent(managers.transform);
         var wmm = wmObj.AddComponent<WorldMapManager>();
-        // Load region data
         var regions = Resources.LoadAll<RegionData>("GameData/Regions");
         if (regions.Length > 0)
         {
             SetSerializedField(wmm, "allRegions", regions);
-            // Find Grassland as starting region
             RegionData startRegion = null;
             foreach (var r in regions)
             {
@@ -187,7 +187,6 @@ public static class SceneSetupWizard
         notifRect.sizeDelta = new Vector2(400, 200);
         SetSerializedField(hud, "notificationContainer", notifRect);
 
-        // Notification prefab (saved as asset)
         var notifPrefab = CreateNotificationPrefab();
         SetSerializedField(hud, "notificationPrefab", notifPrefab);
 
@@ -216,11 +215,9 @@ public static class SceneSetupWizard
         SetSerializedField(worldMapUI, "mapCanvas", mapCanvas);
         SetSerializedField(worldMapUI, "mapContainer", mapContainerRect);
 
-        // Region tile prefab
         var tilePrefab = CreateRegionTilePrefab();
         SetSerializedField(worldMapUI, "regionTilePrefab", tilePrefab);
 
-        // Player marker prefab
         var markerPrefab = CreatePlayerMarkerPrefab();
         SetSerializedField(worldMapUI, "playerMarkerPrefab", markerPrefab);
 
@@ -256,11 +253,9 @@ public static class SceneSetupWizard
         SetSerializedField(satchelUI, "satchelCanvas", satchelCanvas);
         SetSerializedField(satchelUI, "contentContainer", satchelContentRect);
 
-        // Orb slot prefab
         var orbSlotPrefab = CreateOrbSlotPrefab();
         SetSerializedField(satchelUI, "orbSlotPrefab", orbSlotPrefab);
 
-        // Capacity bar
         var capBarArea = new GameObject("CapacityBarArea");
         capBarArea.transform.SetParent(satchelCanvasObj.transform, false);
         var capBarRect = capBarArea.AddComponent<RectTransform>();
@@ -349,10 +344,10 @@ public static class SceneSetupWizard
         }
         EditorSceneManager.SaveScene(scene, scenesFolder + "/MainGame.unity");
 
-        Debug.Log("Alien world scene created! Saved to Assets/Scenes/MainGame.unity");
+        Debug.Log("3D alien world scene created! Saved to Assets/Scenes/MainGame.unity");
         Debug.Log("Regions: " + regions.Length + " | Equipment: " + equipment.Length);
-        Debug.Log("Islands, ocean, creatures, and orbs will generate at runtime.");
-        Debug.Log("Hit Play to explore the alien archipelago!");
+        Debug.Log("Player: 3D Rigidbody + CapsuleCollider | Camera: Perspective third-person");
+        Debug.Log("Hit Play to explore the 3D alien archipelago!");
     }
 
     // --- Helper methods ---
@@ -447,7 +442,6 @@ public static class SceneSetupWizard
         sliderRect.anchorMax = anchorMax;
         sliderRect.sizeDelta = Vector2.zero;
 
-        // Background
         var bgObj = new GameObject("Background");
         bgObj.transform.SetParent(sliderObj.transform, false);
         var bgRect = bgObj.AddComponent<RectTransform>();
@@ -457,7 +451,6 @@ public static class SceneSetupWizard
         var bgImg = bgObj.AddComponent<Image>();
         bgImg.color = new Color(0.2f, 0.2f, 0.2f);
 
-        // Fill area
         var fillArea = new GameObject("Fill Area");
         fillArea.transform.SetParent(sliderObj.transform, false);
         var fillAreaRect = fillArea.AddComponent<RectTransform>();
@@ -481,22 +474,9 @@ public static class SceneSetupWizard
         slider.minValue = 0;
         slider.maxValue = 1;
         slider.value = 0.5f;
-
-        // Remove handle since we just want a fill bar
         slider.handleRect = null;
 
         return slider;
-    }
-
-    private static Sprite CreatePlaceholderSprite(string name, Color color)
-    {
-        var tex = new Texture2D(4, 4);
-        var pixels = new Color[16];
-        for (int i = 0; i < 16; i++) pixels[i] = color;
-        tex.SetPixels(pixels);
-        tex.Apply();
-        tex.name = name;
-        return Sprite.Create(tex, new Rect(0, 0, 4, 4), new Vector2(0.5f, 0.5f), 4);
     }
 
     private static Sprite CreateCircleSprite()
@@ -528,7 +508,7 @@ public static class SceneSetupWizard
         rect.sizeDelta = new Vector2(350, 50);
         var bg = obj.AddComponent<Image>();
         bg.color = new Color(0.1f, 0.1f, 0.1f, 0.9f);
-        var cg = obj.AddComponent<CanvasGroup>();
+        obj.AddComponent<CanvasGroup>();
 
         var textObj = new GameObject("Text");
         textObj.transform.SetParent(obj.transform, false);
@@ -650,7 +630,6 @@ public static class SceneSetupWizard
         var tagManager = new SerializedObject(AssetDatabase.LoadMainAssetAtPath("ProjectSettings/TagManager.asset"));
         var tagsProp = tagManager.FindProperty("tags");
 
-        // Check if tag already exists
         for (int i = 0; i < tagsProp.arraySize; i++)
         {
             if (tagsProp.GetArrayElementAtIndex(i).stringValue == tag)

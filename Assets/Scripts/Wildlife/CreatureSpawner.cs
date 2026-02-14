@@ -6,9 +6,7 @@ using OrbWanderer.World;
 namespace OrbWanderer.Wildlife
 {
     /// <summary>
-    /// Spawns wild creatures on islands that the player can feed orbs to befriend.
-    /// Each island type spawns different creature types.
-    /// Wild creatures wander around until fed enough orbs to join the player.
+    /// Spawns wild 3D creatures on islands that the player can feed orbs to befriend.
     /// </summary>
     public class CreatureSpawner : MonoBehaviour
     {
@@ -29,7 +27,7 @@ namespace OrbWanderer.Wildlife
         public void Initialize(RegionType type)
         {
             islandType = type;
-            spawnTimer = 2f; // Initial spawn delay
+            spawnTimer = 2f;
         }
 
         private void Update()
@@ -46,18 +44,19 @@ namespace OrbWanderer.Wildlife
         {
             CreatureType type = GetCreatureTypeForIsland();
 
-            Vector2 spawnPos = (Vector2)transform.position +
-                Random.insideUnitCircle.normalized * Random.Range(3f, spawnRadius);
+            // Spawn on XZ plane
+            Vector2 circle = Random.insideUnitCircle.normalized * Random.Range(3f, spawnRadius);
+            Vector3 spawnPos = transform.position + new Vector3(circle.x, 0.5f, circle.y);
 
             var creatureObj = new GameObject("Wild_" + type);
             creatureObj.transform.position = spawnPos;
             creatureObj.transform.SetParent(transform);
 
-            var sr = creatureObj.AddComponent<SpriteRenderer>();
-            sr.sprite = GetCreatureSprite(type, 1);
-            sr.sortingOrder = 4;
+            // Apply 3D creature model
+            AlienSpriteGenerator.ApplyCreatureModel(creatureObj, type, 1);
 
-            var collider = creatureObj.AddComponent<CircleCollider2D>();
+            // 3D collider for interaction
+            var collider = creatureObj.AddComponent<SphereCollider>();
             collider.radius = 0.8f;
             collider.isTrigger = true;
 
@@ -90,25 +89,11 @@ namespace OrbWanderer.Wildlife
                 _ => CreatureType.Jellyfish
             };
         }
-
-        private Sprite GetCreatureSprite(CreatureType type, int level)
-        {
-            return type switch
-            {
-                CreatureType.Jellyfish => AlienSpriteGenerator.CreateJellyfishSprite(level),
-                CreatureType.Whale => AlienSpriteGenerator.CreateWhaleSprite(level),
-                CreatureType.Spider => AlienSpriteGenerator.CreateSpiderSprite(level),
-                CreatureType.Firebird => AlienSpriteGenerator.CreateFirebirdSprite(level),
-                CreatureType.IceGolem => AlienSpriteGenerator.CreateIceGolemSprite(level),
-                _ => AlienSpriteGenerator.CreateJellyfishSprite(level)
-            };
-        }
     }
 
     /// <summary>
-    /// A wild creature wandering on an island.
+    /// A wild 3D creature wandering on an island.
     /// Player can feed it orbs to tame it and add to their crew.
-    /// Shows a hunger/trust indicator above its head.
     /// </summary>
     public class WildCreature : MonoBehaviour
     {
@@ -117,18 +102,18 @@ namespace OrbWanderer.Wildlife
         private float wanderRadius;
         private int orbsNeeded;
         private int orbsFed;
-        private Vector2 homePosition;
-        private Vector2 wanderTarget;
+        private Vector3 homePosition;
+        private Vector3 wanderTarget;
         private float wanderTimer;
         private bool isTamed;
-        private SpriteRenderer hungerIndicator;
+        private Transform trustIndicator;
 
         public CreatureType Type => creatureType;
         public bool IsTamed => isTamed;
         public float TrustProgress => orbsNeeded > 0 ? (float)orbsFed / orbsNeeded : 0;
         public System.Action<WildCreature> OnTamed;
 
-        public void Initialize(CreatureType type, float speed, float radius, int orbsToTame, Vector2 home)
+        public void Initialize(CreatureType type, float speed, float radius, int orbsToTame, Vector3 home)
         {
             creatureType = type;
             wanderSpeed = speed;
@@ -137,7 +122,7 @@ namespace OrbWanderer.Wildlife
             homePosition = home;
             wanderTarget = homePosition;
 
-            CreateHungerIndicator();
+            CreateTrustIndicator();
         }
 
         private void Update()
@@ -151,31 +136,34 @@ namespace OrbWanderer.Wildlife
         {
             wanderTimer -= Time.deltaTime;
 
-            if (wanderTimer <= 0 || Vector2.Distance(transform.position, wanderTarget) < 0.3f)
+            if (wanderTimer <= 0 || Vector3.Distance(transform.position, wanderTarget) < 0.3f)
             {
-                wanderTarget = homePosition + Random.insideUnitCircle * wanderRadius;
+                // Pick random point on XZ plane around home
+                Vector2 circle = Random.insideUnitCircle * wanderRadius;
+                wanderTarget = homePosition + new Vector3(circle.x, 0, circle.y);
                 wanderTimer = Random.Range(2f, 5f);
             }
 
-            Vector2 dir = (wanderTarget - (Vector2)transform.position).normalized;
-            transform.position += (Vector3)(dir * wanderSpeed * Time.deltaTime);
+            Vector3 dir = (wanderTarget - transform.position);
+            dir.y = 0; // Stay on XZ plane
+            dir = dir.normalized;
 
-            // Flip sprite
-            var sr = GetComponent<SpriteRenderer>();
-            if (sr != null && Mathf.Abs(dir.x) > 0.1f)
-                sr.flipX = dir.x < 0;
+            transform.position += dir * wanderSpeed * Time.deltaTime;
+
+            // Rotate to face movement direction
+            if (dir.magnitude > 0.1f)
+            {
+                Quaternion targetRot = Quaternion.LookRotation(dir, Vector3.up);
+                transform.rotation = Quaternion.Slerp(transform.rotation, targetRot, 5f * Time.deltaTime);
+            }
         }
 
-        /// <summary>
-        /// Feed this creature an orb. Returns true if it's now tamed.
-        /// </summary>
         public bool FeedOrb(OrbData orb)
         {
             if (isTamed) return false;
 
             orbsFed++;
 
-            // Specialty orbs count as 2
             bool isSpecialty = creatureType switch
             {
                 CreatureType.Jellyfish => orb.orbType == OrbType.Aqua,
@@ -194,7 +182,6 @@ namespace OrbWanderer.Wildlife
                 return true;
             }
 
-            // Visual feedback — creature hops happily
             StartCoroutine(HappyBounce());
             return false;
         }
@@ -203,20 +190,16 @@ namespace OrbWanderer.Wildlife
         {
             isTamed = true;
 
-            // Remove hunger indicator
-            if (hungerIndicator != null)
-                Destroy(hungerIndicator.gameObject);
+            if (trustIndicator != null)
+                Destroy(trustIndicator.gameObject);
 
             OnTamed?.Invoke(this);
 
-            // Convert to CreatureCompanion
             var player = GameObject.FindGameObjectWithTag("Player");
             if (player != null)
             {
                 var companion = gameObject.AddComponent<CreatureCompanion>();
                 companion.Initialize(GetDefaultName(), creatureType, player.transform);
-
-                // Remove wild behavior
                 Destroy(this);
             }
         }
@@ -234,42 +217,41 @@ namespace OrbWanderer.Wildlife
             };
         }
 
-        private void CreateHungerIndicator()
+        private void CreateTrustIndicator()
         {
             var indicatorObj = new GameObject("TrustIndicator");
             indicatorObj.transform.SetParent(transform, false);
-            indicatorObj.transform.localPosition = new Vector3(0, 1.5f, 0);
+            indicatorObj.transform.localPosition = new Vector3(0, 2f, 0);
 
-            hungerIndicator = indicatorObj.AddComponent<SpriteRenderer>();
-            hungerIndicator.sortingOrder = 10;
+            // Progress bar using a stretched cube
+            var bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            bar.name = "ProgressBar";
+            bar.transform.SetParent(indicatorObj.transform, false);
+            bar.transform.localScale = new Vector3(1f, 0.1f, 0.1f);
+            bar.GetComponent<Renderer>().material =
+                AlienSpriteGenerator.CreateEmissiveMaterial(Color.red, 1f);
+            Object.Destroy(bar.GetComponent<Collider>());
+
+            trustIndicator = indicatorObj.transform;
+
+            // Billboard so it always faces camera
+            indicatorObj.AddComponent<World.BillboardLabel>();
+
             UpdateIndicator();
         }
 
         private void UpdateIndicator()
         {
-            if (hungerIndicator == null) return;
+            if (trustIndicator == null) return;
 
-            int size = 16;
-            var tex = new Texture2D(size, 4);
-            tex.filterMode = FilterMode.Point;
+            var bar = trustIndicator.Find("ProgressBar");
+            if (bar == null) return;
 
             float progress = TrustProgress;
-            for (int x = 0; x < size; x++)
-            {
-                float t = x / (float)size;
-                Color c;
-                if (t <= progress)
-                    c = Color.Lerp(Color.red, Color.green, progress);
-                else
-                    c = new Color(0.2f, 0.2f, 0.2f, 0.5f);
-
-                for (int y = 0; y < 4; y++)
-                    tex.SetPixel(x, y, c);
-            }
-
-            tex.Apply();
-            hungerIndicator.sprite = Sprite.Create(tex, new Rect(0, 0, size, 4),
-                new Vector2(0.5f, 0.5f), size);
+            Color barColor = Color.Lerp(Color.red, Color.green, progress);
+            bar.GetComponent<Renderer>().material =
+                AlienSpriteGenerator.CreateEmissiveMaterial(barColor, 1f);
+            bar.localScale = new Vector3(Mathf.Max(0.1f, progress), 0.1f, 0.1f);
         }
 
         private System.Collections.IEnumerator HappyBounce()

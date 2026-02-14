@@ -3,8 +3,8 @@ using UnityEngine;
 namespace OrbWanderer.World
 {
     /// <summary>
-    /// Renders animated ocean water between islands.
-    /// Creates a large water plane with animated wave effect.
+    /// Renders a large 3D ocean water plane between islands.
+    /// Uses a semi-transparent animated material with sparkle effects.
     /// </summary>
     public class OceanRenderer : MonoBehaviour
     {
@@ -16,85 +16,78 @@ namespace OrbWanderer.World
 
         [Header("Animation")]
         [SerializeField] private float waveSpeed = 0.5f;
-        [SerializeField] private float waveScale = 0.05f;
         [SerializeField] private float sparkleInterval = 0.3f;
 
-        private SpriteRenderer oceanSprite;
+        private MeshRenderer oceanRenderer;
         private Transform[] sparkles;
-        private float sparkleTimer;
 
         private void Start()
         {
-            CreateOceanBase();
+            CreateOceanPlane();
             CreateSparkles();
         }
 
         private void Update()
         {
             AnimateSparkles();
+            AnimateOcean();
         }
 
-        private void CreateOceanBase()
+        private void CreateOceanPlane()
         {
-            int texSize = 128;
-            var tex = new Texture2D(texSize, texSize);
-            tex.filterMode = FilterMode.Bilinear;
-            tex.wrapMode = TextureWrapMode.Repeat;
+            // Create a flat plane for the ocean
+            var oceanObj = GameObject.CreatePrimitive(PrimitiveType.Plane);
+            oceanObj.name = "OceanPlane";
+            oceanObj.transform.SetParent(transform, false);
+            oceanObj.transform.localPosition = new Vector3(0, -0.3f, 0);
+            oceanObj.transform.localScale = new Vector3(oceanSize / 10f, 1, oceanSize / 10f);
 
-            for (int y = 0; y < texSize; y++)
-            {
-                for (int x = 0; x < texSize; x++)
-                {
-                    float noise1 = Mathf.PerlinNoise(x * waveScale, y * waveScale);
-                    float noise2 = Mathf.PerlinNoise(x * waveScale * 2f + 100, y * waveScale * 2f + 100);
-                    float combined = noise1 * 0.7f + noise2 * 0.3f;
+            // Semi-transparent water material
+            var waterMat = new Material(Shader.Find("Standard"));
+            Color waterColor = Color.Lerp(deepColor, shallowColor, 0.5f);
+            waterMat.color = new Color(waterColor.r, waterColor.g, waterColor.b, 0.85f);
+            waterMat.SetFloat("_Mode", 3); // Transparent
+            waterMat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            waterMat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            waterMat.SetInt("_ZWrite", 0);
+            waterMat.DisableKeyword("_ALPHATEST_ON");
+            waterMat.EnableKeyword("_ALPHABLEND_ON");
+            waterMat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            waterMat.renderQueue = 3000;
+            waterMat.SetFloat("_Metallic", 0.3f);
+            waterMat.SetFloat("_Glossiness", 0.9f);
+            waterMat.EnableKeyword("_EMISSION");
+            waterMat.SetColor("_EmissionColor", deepColor * 0.2f);
 
-                    Color c = Color.Lerp(deepColor, shallowColor, combined);
-                    tex.SetPixel(x, y, c);
-                }
-            }
+            oceanRenderer = oceanObj.GetComponent<MeshRenderer>();
+            oceanRenderer.material = waterMat;
 
-            tex.Apply();
-
-            oceanSprite = gameObject.GetComponent<SpriteRenderer>();
-            if (oceanSprite == null)
-                oceanSprite = gameObject.AddComponent<SpriteRenderer>();
-
-            oceanSprite.sprite = Sprite.Create(tex, new Rect(0, 0, texSize, texSize),
-                new Vector2(0.5f, 0.5f), texSize / oceanSize);
-            oceanSprite.sortingOrder = -100;
-            oceanSprite.drawMode = SpriteDrawMode.Tiled;
-            oceanSprite.size = new Vector2(oceanSize, oceanSize);
+            // Remove the default collider (ocean doesn't need physical collision)
+            Object.Destroy(oceanObj.GetComponent<Collider>());
         }
 
         private void CreateSparkles()
         {
-            int count = 40;
+            int count = 30;
             sparkles = new Transform[count];
             var sparkleParent = new GameObject("Sparkles");
             sparkleParent.transform.SetParent(transform, false);
 
+            var sparkleMat = AlienSpriteGenerator.CreateEmissiveMaterial(
+                new Color(0.8f, 0.9f, 1f), 2f);
+
             for (int i = 0; i < count; i++)
             {
-                var sparkle = new GameObject("Sparkle");
+                var sparkle = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                sparkle.name = "Sparkle";
                 sparkle.transform.SetParent(sparkleParent.transform, false);
                 sparkle.transform.localPosition = new Vector3(
                     Random.Range(-oceanSize / 2f, oceanSize / 2f),
-                    Random.Range(-oceanSize / 2f, oceanSize / 2f), 0);
-
-                var sr = sparkle.AddComponent<SpriteRenderer>();
-                int size = 4;
-                var tex = new Texture2D(size, size);
-                tex.filterMode = FilterMode.Point;
-                for (int y = 0; y < size; y++)
-                    for (int x = 0; x < size; x++)
-                        tex.SetPixel(x, y, x > 0 && x < size - 1 && y > 0 && y < size - 1
-                            ? foamColor : Color.clear);
-                tex.Apply();
-                sr.sprite = Sprite.Create(tex, new Rect(0, 0, size, size),
-                    new Vector2(0.5f, 0.5f), size);
-                sr.sortingOrder = -99;
-                sr.color = new Color(1, 1, 1, 0);
+                    -0.15f,
+                    Random.Range(-oceanSize / 2f, oceanSize / 2f));
+                sparkle.transform.localScale = Vector3.one * Random.Range(0.1f, 0.3f);
+                sparkle.GetComponent<Renderer>().material = sparkleMat;
+                Object.Destroy(sparkle.GetComponent<Collider>());
 
                 sparkles[i] = sparkle.transform;
             }
@@ -104,26 +97,30 @@ namespace OrbWanderer.World
         {
             if (sparkles == null) return;
 
-            sparkleTimer += Time.deltaTime;
-
             for (int i = 0; i < sparkles.Length; i++)
             {
                 if (sparkles[i] == null) continue;
 
-                // Gentle bobbing
+                // Gentle bobbing on XZ plane
                 var pos = sparkles[i].localPosition;
                 pos.x += Mathf.Sin(Time.time * waveSpeed + i * 0.5f) * Time.deltaTime * 0.2f;
-                pos.y += Mathf.Cos(Time.time * waveSpeed * 0.7f + i * 0.3f) * Time.deltaTime * 0.15f;
+                pos.z += Mathf.Cos(Time.time * waveSpeed * 0.7f + i * 0.3f) * Time.deltaTime * 0.15f;
                 sparkles[i].localPosition = pos;
 
-                // Twinkle effect
-                var sr = sparkles[i].GetComponent<SpriteRenderer>();
-                if (sr != null)
-                {
-                    float alpha = Mathf.Sin(Time.time * 2f + i * 1.7f) * 0.5f + 0.5f;
-                    sr.color = new Color(foamColor.r, foamColor.g, foamColor.b, alpha * 0.4f);
-                }
+                // Twinkle by scaling
+                float alpha = Mathf.Sin(Time.time * 2f + i * 1.7f) * 0.5f + 0.5f;
+                sparkles[i].localScale = Vector3.one * (0.1f + alpha * 0.2f);
             }
+        }
+
+        private void AnimateOcean()
+        {
+            if (oceanRenderer == null) return;
+
+            // Subtle emission color shift for wave illusion
+            float t = Mathf.Sin(Time.time * waveSpeed) * 0.5f + 0.5f;
+            Color emission = Color.Lerp(deepColor * 0.15f, shallowColor * 0.25f, t);
+            oceanRenderer.material.SetColor("_EmissionColor", emission);
         }
 
         public void SetOceanSize(float size)
